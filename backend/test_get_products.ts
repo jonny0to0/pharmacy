@@ -1,0 +1,1 @@
+import prisma from './src/db.js'; async function run() { try { const p = await prisma.product.findMany({ where: { tenantId: '123', isDeleted: false }, include: { stockbatch: { where: { quantity: { gt: 0 } }, orderBy: { expiryDate: 'asc' } } }, orderBy: { createdAt: 'desc' } }); console.log('Success', p.length); } catch (e) { console.error(e) } } run();

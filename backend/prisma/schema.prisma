@@ -1,0 +1,1261 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model attendance {
+  id         String            @id
+  userId     String
+  date       DateTime          @default(now())
+  checkIn    DateTime
+  checkOut   DateTime?
+  status     attendance_status @default(PRESENT)
+  ipAddress  String?
+  deviceInfo String?
+  location   String?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime
+  tenantId   String
+  user       user              @relation(fields: [userId], references: [id], map: "Attendance_userId_fkey")
+
+  @@index([userId, date], map: "Attendance_userId_date_idx")
+}
+
+model auditlog {
+  id             String            @id
+  userId         String?
+  action         String
+  module         String
+  severity       auditlog_severity @default(INFO)
+  ipAddress      String?
+  actorRole      String?
+  entityId       String?
+  impersonatedBy String?
+  requestId      String?
+  metadata       String?           @db.LongText
+  createdAt      DateTime          @default(now())
+  user           user?             @relation(fields: [userId], references: [id], map: "AuditLog_userId_fkey")
+
+  @@index([userId, module, createdAt], map: "AuditLog_userId_module_createdAt_idx")
+}
+
+model businessprofile {
+  id                String                            @id
+  businessName      String
+  pan               String?
+  address           String?
+  state             String?
+  pinCode           String?
+  bannerKey         String?
+  drugLicense       String?
+  drugLicenseStatus businessprofile_drugLicenseStatus @default(PENDING)
+  drugLicenseUrl    String?
+  email             String?
+  fssai             String?
+  fssaiStatus       businessprofile_fssaiStatus       @default(PENDING)
+  fssaiUrl          String?
+  gstStatus         businessprofile_gstStatus         @default(PENDING)
+  gstUrl            String?
+  logoKey           String?
+  ownerName         String?
+  panStatus         businessprofile_panStatus         @default(PENDING)
+  panUrl            String?
+  phone             String?
+  tenantId          String                            @unique(map: "BusinessProfile_tenantId_key")
+  tenant            tenant                            @relation(fields: [tenantId], references: [id], map: "BusinessProfile_tenantId_fkey")
+}
+
+model cacheentry {
+  key    String   @id
+  value  String   @db.LongText
+  expiry DateTime
+}
+
+model category {
+  id           String    @id
+  name         String
+  iconName     String?
+  isActive     Boolean   @default(true)
+  displayOrder Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime
+  tenantId     String
+  tenant       tenant    @relation(fields: [tenantId], references: [id], map: "Category_tenantId_fkey")
+  product      product[]
+
+  @@unique([name, tenantId], map: "Category_name_tenantId_key")
+  @@index([tenantId], map: "Category_tenantId_fkey")
+}
+
+model creditnote {
+  id            String       @id
+  noteNumber    String
+  date          DateTime     @default(now())
+  customerId    String
+  saleInvoiceId String?
+  amount        Float
+  reason        String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime
+  tenantId      String
+  customer      customer     @relation(fields: [customerId], references: [id], map: "CreditNote_customerId_fkey")
+  saleinvoice   saleinvoice? @relation(fields: [saleInvoiceId], references: [id], map: "CreditNote_saleInvoiceId_fkey")
+  tenant        tenant       @relation(fields: [tenantId], references: [id], map: "CreditNote_tenantId_fkey")
+
+  @@unique([noteNumber, tenantId], map: "CreditNote_noteNumber_tenantId_key")
+  @@index([customerId], map: "CreditNote_customerId_fkey")
+  @@index([saleInvoiceId], map: "CreditNote_saleInvoiceId_fkey")
+  @@index([tenantId], map: "CreditNote_tenantId_fkey")
+}
+
+model customer {
+  id                 String                @id
+  name               String
+  email              String?
+  address            String?
+  state              String?
+  creditLimit        Float                 @default(0)
+  creditDays         Int                   @default(30)
+  outstandingBalance Float                 @default(0)
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime
+  customerType       customer_customerType @default(regular)
+  gst_number         String?
+  isDeleted          Boolean               @default(false)
+  phone              String?
+  tenantId           String
+  creditnote         creditnote[]
+  tenant             tenant                @relation(fields: [tenantId], references: [id], map: "Customer_tenantId_fkey")
+  payment            payment[]
+  saleinvoice        saleinvoice[]
+  salesorder         salesorder[]
+
+  @@unique([phone, tenantId], map: "Customer_phone_tenantId_key")
+  @@index([tenantId], map: "Customer_tenantId_fkey")
+}
+
+model debitnote {
+  id             String        @id
+  noteNumber     String
+  date           DateTime      @default(now())
+  supplierId     String
+  purchaseBillId String?
+  amount         Float
+  reason         String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime
+  tenantId       String
+  purchasebill   purchasebill? @relation(fields: [purchaseBillId], references: [id], map: "DebitNote_purchaseBillId_fkey")
+  supplier       supplier      @relation(fields: [supplierId], references: [id], map: "DebitNote_supplierId_fkey")
+  tenant         tenant        @relation(fields: [tenantId], references: [id], map: "DebitNote_tenantId_fkey")
+
+  @@unique([noteNumber, tenantId], map: "DebitNote_noteNumber_tenantId_key")
+  @@index([purchaseBillId], map: "DebitNote_purchaseBillId_fkey")
+  @@index([supplierId], map: "DebitNote_supplierId_fkey")
+  @@index([tenantId], map: "DebitNote_tenantId_fkey")
+}
+
+model expense {
+  id          String              @id
+  category    String
+  amount      Float
+  date        DateTime            @default(now())
+  description String?
+  paymentMode expense_paymentMode @default(CASH)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime
+  tenantId    String
+  tenant      tenant              @relation(fields: [tenantId], references: [id], map: "Expense_tenantId_fkey")
+
+  @@index([tenantId], map: "Expense_tenantId_fkey")
+}
+
+model featureflag {
+  id                String   @id
+  key               String   @unique(map: "FeatureFlag_key_key")
+  name              String
+  description       String?
+  enabled           Boolean  @default(false)
+  environment       String   @default("production")
+  rolloutPercentage Int      @default(100)
+  targetRole        String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime
+
+  @@index([key, environment], map: "FeatureFlag_key_environment_idx")
+}
+
+model hsnmaster {
+  id          String   @id
+  hsnCode     String
+  gstRate     Float
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+
+  @@unique([hsnCode, gstRate], map: "HsnMaster_hsnCode_gstRate_key")
+}
+
+model incident {
+  id             String            @id
+  message        String
+  severity       incident_severity @default(INFO)
+  status         incident_status   @default(ACTIVE)
+  assignedToId   String?
+  cooldownKey    String?
+  count          Int               @default(1)
+  notes          String?           @db.LongText
+  timeline       String?           @db.LongText
+  runbookUrl     String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime
+  acknowledgedAt DateTime?
+  resolvedAt     DateTime?
+  user           user?             @relation(fields: [assignedToId], references: [id], map: "Incident_assignedToId_fkey")
+
+  @@index([assignedToId], map: "Incident_assignedToId_fkey")
+  @@index([status, severity], map: "Incident_status_severity_idx")
+}
+
+model integration {
+  id        String   @id
+  name      String   @unique(map: "Integration_name_key")
+  type      String
+  enabled   Boolean  @default(false)
+  apiKey    String?
+  config    String?  @db.LongText
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+
+  @@index([type, enabled], map: "Integration_type_enabled_idx")
+}
+
+model leaverequest {
+  id                                   String              @id
+  userId                               String
+  type                                 leaverequest_type
+  startDate                            DateTime
+  endDate                              DateTime
+  status                               leaverequest_status @default(PENDING)
+  reason                               String?
+  approvedById                         String?
+  createdAt                            DateTime            @default(now())
+  updatedAt                            DateTime
+  tenantId                             String
+  user_leaverequest_approvedByIdTouser user?               @relation("leaverequest_approvedByIdTouser", fields: [approvedById], references: [id], map: "LeaveRequest_approvedById_fkey")
+  user_leaverequest_userIdTouser       user                @relation("leaverequest_userIdTouser", fields: [userId], references: [id], map: "LeaveRequest_userId_fkey")
+
+  @@index([approvedById], map: "LeaveRequest_approvedById_fkey")
+  @@index([userId, status], map: "LeaveRequest_userId_status_idx")
+}
+
+model module {
+  id         String       @id
+  name       String       @unique(map: "Module_name_key")
+  permission permission[]
+}
+
+model notification {
+  id        String   @id
+  userId    String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      user     @relation(fields: [userId], references: [id], map: "Notification_userId_fkey")
+
+  @@index([userId], map: "Notification_userId_idx")
+}
+
+model notificationpreference {
+  id       String  @id
+  userId   String  @unique(map: "NotificationPreference_userId_key")
+  email    Boolean @default(true)
+  inApp    Boolean @default(true)
+  lowStock Boolean @default(true)
+  newOrder Boolean @default(true)
+  user     user    @relation(fields: [userId], references: [id], map: "NotificationPreference_userId_fkey")
+}
+
+model payment {
+  id             String        @id
+  type           String
+  amount         Float
+  date           DateTime      @default(now())
+  mode           payment_mode  @default(CASH)
+  referenceNo    String?
+  customerId     String?
+  supplierId     String?
+  saleInvoiceId  String?
+  purchaseBillId String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime
+  tenantId       String
+  customer       customer?     @relation(fields: [customerId], references: [id], map: "Payment_customerId_fkey")
+  purchasebill   purchasebill? @relation(fields: [purchaseBillId], references: [id], map: "Payment_purchaseBillId_fkey")
+  saleinvoice    saleinvoice?  @relation(fields: [saleInvoiceId], references: [id], map: "Payment_saleInvoiceId_fkey")
+  supplier       supplier?     @relation(fields: [supplierId], references: [id], map: "Payment_supplierId_fkey")
+  tenant         tenant        @relation(fields: [tenantId], references: [id], map: "Payment_tenantId_fkey")
+
+  @@index([customerId], map: "Payment_customerId_fkey")
+  @@index([purchaseBillId], map: "Payment_purchaseBillId_fkey")
+  @@index([saleInvoiceId], map: "Payment_saleInvoiceId_fkey")
+  @@index([supplierId], map: "Payment_supplierId_fkey")
+  @@index([tenantId], map: "Payment_tenantId_fkey")
+}
+
+model permission {
+  id             String           @id
+  name           String           @unique(map: "Permission_name_key")
+  action         String
+  moduleId       String
+  module         module           @relation(fields: [moduleId], references: [id], map: "Permission_moduleId_fkey")
+  rolepermission rolepermission[]
+
+  @@index([moduleId], map: "Permission_moduleId_fkey")
+}
+
+model pincodecache {
+  pincode String @id
+  city    String
+  state   String
+  country String @default("India")
+}
+
+model plan {
+  id           String         @id
+  code         String
+  version      Int            @default(1)
+  name         String
+  price        Float
+  billingCycle String         @default("MONTHLY")
+  isActive     Boolean        @default(true)
+  isDefault    Boolean        @default(false)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime
+  changeLog    String?        @db.Text
+  description  String?
+  isCurrent    Boolean        @default(true)
+  type         plan_type      @default(SUBSCRIPTION)
+  planfeature  planfeature[]
+  planlimit    planlimit[]
+  subscription subscription[]
+
+  @@unique([code, version], map: "Plan_code_version_key")
+  @@index([isActive], map: "Plan_isActive_idx")
+  @@index([isCurrent], map: "Plan_isCurrent_idx")
+}
+
+model planfeature {
+  id         String   @id
+  planId     String
+  featureKey String
+  enabled    Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime
+  plan       plan     @relation(fields: [planId], references: [id], map: "PlanFeature_planId_fkey")
+
+  @@unique([planId, featureKey], map: "PlanFeature_planId_featureKey_key")
+}
+
+model planlimit {
+  id        String   @id
+  planId    String
+  limitKey  String
+  value     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  plan      plan     @relation(fields: [planId], references: [id], map: "PlanLimit_planId_fkey")
+
+  @@unique([planId, limitKey], map: "PlanLimit_planId_limitKey_key")
+}
+
+model product {
+  id                 String              @id
+  name               String
+  sku                String
+  hsnCode            String?
+  unit               String              @default("pcs")
+  purchasePrice      Float               @default(0)
+  sellingPrice       Float               @default(0)
+  mrp                Float               @default(0)
+  gstRate            Float               @default(0)
+  minStockLevel      Int                 @default(10)
+  currentStock       Int                 @default(0)
+  location           String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime
+  barcode            String?
+  deletedAt          DateTime?
+  isDeleted          Boolean             @default(false)
+  isActive           Boolean             @default(true)
+  manufacturer       String?
+  categoryId         String?
+  categoryName       String?
+  contraindications  String?             @db.Text
+  dosageInfo         String?             @db.Text
+  hasMedicalInfo     Boolean             @default(false)
+  imageKey           String?
+  medicalDescription String?             @db.Text
+  precautions        String?             @db.Text
+  sideEffects        String?             @db.Text
+  tenantId           String
+  uses               String?             @db.Text
+  category           category?           @relation(fields: [categoryId], references: [id], map: "Product_categoryId_fkey")
+  tenant             tenant              @relation(fields: [tenantId], references: [id], map: "Product_tenantId_fkey")
+  purchasebillitem   purchasebillitem[]
+  purchaseorderitem  purchaseorderitem[]
+  saleinvoiceitem    saleinvoiceitem[]
+  salesorderitem     salesorderitem[]
+  stockadjustment    stockadjustment[]
+  stockbatch         stockbatch[]
+
+  @@unique([sku, tenantId], map: "Product_sku_tenantId_key")
+  @@index([categoryId], map: "Product_categoryId_fkey")
+  @@index([tenantId], map: "Product_tenantId_fkey")
+}
+
+model purchasebill {
+  id                String              @id
+  billNumber        String
+  supplierInvoiceNo String?
+  date              DateTime            @default(now())
+  supplierId        String?
+  subTotal          Float               @default(0)
+  totalTax          Float               @default(0)
+  grandTotal        Float               @default(0)
+  amountPaid        Float               @default(0)
+  status            purchasebill_status @default(UNPAID)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime
+  tenantId          String
+  debitnote         debitnote[]
+  payment           payment[]
+  supplier          supplier?           @relation(fields: [supplierId], references: [id], map: "PurchaseBill_supplierId_fkey")
+  tenant            tenant              @relation(fields: [tenantId], references: [id], map: "PurchaseBill_tenantId_fkey")
+  purchasebillitem  purchasebillitem[]
+
+  @@unique([billNumber, tenantId], map: "PurchaseBill_billNumber_tenantId_key")
+  @@index([supplierId], map: "PurchaseBill_supplierId_fkey")
+  @@index([tenantId], map: "PurchaseBill_tenantId_fkey")
+}
+
+model purchasebillitem {
+  id           String       @id
+  billId       String
+  productId    String
+  quantity     Int
+  rate         Float
+  gstRate      Float        @default(0)
+  taxAmount    Float        @default(0)
+  total        Float
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime
+  tenantId     String
+  purchasebill purchasebill @relation(fields: [billId], references: [id], map: "PurchaseBillItem_billId_fkey")
+  product      product      @relation(fields: [productId], references: [id], map: "PurchaseBillItem_productId_fkey")
+  tenant       tenant       @relation(fields: [tenantId], references: [id], map: "PurchaseBillItem_tenantId_fkey")
+
+  @@index([billId], map: "PurchaseBillItem_billId_fkey")
+  @@index([productId], map: "PurchaseBillItem_productId_fkey")
+  @@index([tenantId], map: "PurchaseBillItem_tenantId_fkey")
+}
+
+model purchaseorder {
+  id                String              @id
+  orderNumber       String
+  date              DateTime            @default(now())
+  supplierId        String
+  status            String              @default("PENDING")
+  expectedDate      DateTime?
+  subTotal          Float               @default(0)
+  totalTax          Float               @default(0)
+  grandTotal        Float               @default(0)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime
+  tenantId          String
+  supplier          supplier            @relation(fields: [supplierId], references: [id], map: "PurchaseOrder_supplierId_fkey")
+  tenant            tenant              @relation(fields: [tenantId], references: [id], map: "PurchaseOrder_tenantId_fkey")
+  purchaseorderitem purchaseorderitem[]
+
+  @@unique([orderNumber, tenantId], map: "PurchaseOrder_orderNumber_tenantId_key")
+  @@index([supplierId], map: "PurchaseOrder_supplierId_fkey")
+  @@index([tenantId], map: "PurchaseOrder_tenantId_fkey")
+}
+
+model purchaseorderitem {
+  id            String        @id
+  orderId       String
+  productId     String
+  quantity      Int
+  rate          Float
+  gstRate       Float         @default(0)
+  total         Float
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime
+  tenantId      String
+  purchaseorder purchaseorder @relation(fields: [orderId], references: [id], map: "PurchaseOrderItem_orderId_fkey")
+  product       product       @relation(fields: [productId], references: [id], map: "PurchaseOrderItem_productId_fkey")
+  tenant        tenant        @relation(fields: [tenantId], references: [id], map: "PurchaseOrderItem_tenantId_fkey")
+
+  @@index([orderId], map: "PurchaseOrderItem_orderId_fkey")
+  @@index([productId], map: "PurchaseOrderItem_productId_fkey")
+  @@index([tenantId], map: "PurchaseOrderItem_tenantId_fkey")
+}
+
+model role {
+  id             String           @id
+  name           String
+  description    String?
+  tenantId       String?
+  isSystem       Boolean          @default(false)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime
+  tenant         tenant?          @relation(fields: [tenantId], references: [id], map: "Role_tenantId_fkey")
+  rolepermission rolepermission[]
+  userrole       userrole[]
+
+  @@unique([name, tenantId], map: "Role_name_tenantId_key")
+  @@index([tenantId], map: "Role_tenantId_fkey")
+}
+
+model rolepermission {
+  id           String               @id
+  roleId       String
+  permissionId String
+  scope        rolepermission_scope @default(FULL)
+  permission   permission           @relation(fields: [permissionId], references: [id], map: "RolePermission_permissionId_fkey")
+  role         role                 @relation(fields: [roleId], references: [id], map: "RolePermission_roleId_fkey")
+
+  @@unique([roleId, permissionId], map: "RolePermission_roleId_permissionId_key")
+  @@index([permissionId], map: "RolePermission_permissionId_fkey")
+}
+
+model saleinvoice {
+  id              String             @id
+  invoiceNumber   String
+  date            DateTime           @default(now())
+  dueDate         DateTime?
+  customerId      String?
+  isCash          Boolean            @default(true)
+  placeOfSupply   String?
+  type            saleinvoice_type   @default(TAX_INVOICE)
+  subTotal        Float              @default(0)
+  discount        Float              @default(0)
+  totalTax        Float              @default(0)
+  cgst            Float              @default(0)
+  sgst            Float              @default(0)
+  igst            Float              @default(0)
+  grandTotal      Float              @default(0)
+  amountPaid      Float              @default(0)
+  status          saleinvoice_status @default(UNPAID)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime
+  ewayBillNumber  String?
+  irn             String?
+  tenantId        String
+  creditnote      creditnote[]
+  payment         payment[]
+  customer        customer?          @relation(fields: [customerId], references: [id], map: "SaleInvoice_customerId_fkey")
+  tenant          tenant             @relation(fields: [tenantId], references: [id], map: "SaleInvoice_tenantId_fkey")
+  saleinvoiceitem saleinvoiceitem[]
+
+  @@unique([invoiceNumber, tenantId], map: "SaleInvoice_invoiceNumber_tenantId_key")
+  @@index([customerId], map: "SaleInvoice_customerId_fkey")
+  @@index([tenantId], map: "SaleInvoice_tenantId_fkey")
+}
+
+model saleinvoiceitem {
+  id            String      @id
+  invoiceId     String
+  productId     String
+  quantity      Int
+  rate          Float
+  discount      Float       @default(0)
+  gstRate       Float       @default(0)
+  taxableAmount Float
+  cgstAmount    Float       @default(0)
+  sgstAmount    Float       @default(0)
+  igstAmount    Float       @default(0)
+  total         Float
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime
+  tenantId      String
+  saleinvoice   saleinvoice @relation(fields: [invoiceId], references: [id], map: "SaleInvoiceItem_invoiceId_fkey")
+  product       product     @relation(fields: [productId], references: [id], map: "SaleInvoiceItem_productId_fkey")
+  tenant        tenant      @relation(fields: [tenantId], references: [id], map: "SaleInvoiceItem_tenantId_fkey")
+
+  @@index([invoiceId], map: "SaleInvoiceItem_invoiceId_fkey")
+  @@index([productId], map: "SaleInvoiceItem_productId_fkey")
+  @@index([tenantId], map: "SaleInvoiceItem_tenantId_fkey")
+}
+
+model salesorder {
+  id             String           @id
+  orderNumber    String
+  date           DateTime         @default(now())
+  customerId     String?
+  status         String           @default("PENDING")
+  subTotal       Float            @default(0)
+  totalTax       Float            @default(0)
+  grandTotal     Float            @default(0)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime
+  tenantId       String
+  customer       customer?        @relation(fields: [customerId], references: [id], map: "SalesOrder_customerId_fkey")
+  tenant         tenant           @relation(fields: [tenantId], references: [id], map: "SalesOrder_tenantId_fkey")
+  salesorderitem salesorderitem[]
+
+  @@unique([orderNumber, tenantId], map: "SalesOrder_orderNumber_tenantId_key")
+  @@index([customerId], map: "SalesOrder_customerId_fkey")
+  @@index([tenantId], map: "SalesOrder_tenantId_fkey")
+}
+
+model salesorderitem {
+  id         String     @id
+  orderId    String
+  productId  String
+  quantity   Int
+  rate       Float
+  discount   Float      @default(0)
+  gstRate    Float      @default(0)
+  total      Float
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime
+  tenantId   String
+  salesorder salesorder @relation(fields: [orderId], references: [id], map: "SalesOrderItem_orderId_fkey")
+  product    product    @relation(fields: [productId], references: [id], map: "SalesOrderItem_productId_fkey")
+  tenant     tenant     @relation(fields: [tenantId], references: [id], map: "SalesOrderItem_tenantId_fkey")
+
+  @@index([orderId], map: "SalesOrderItem_orderId_fkey")
+  @@index([productId], map: "SalesOrderItem_productId_fkey")
+  @@index([tenantId], map: "SalesOrderItem_tenantId_fkey")
+}
+
+model session {
+  id        String   @id
+  userId    String
+  token     String   @unique(map: "Session_token_key")
+  userAgent String?
+  ip        String?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  user      user     @relation(fields: [userId], references: [id], map: "Session_userId_fkey")
+
+  @@unique([userId, userAgent, ip], map: "Session_userId_userAgent_ip_key")
+  @@index([userId], map: "Session_userId_idx")
+}
+
+model staffdocument {
+  id        String   @id
+  userId    String
+  name      String
+  type      String
+  url       String
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  tenantId  String
+  user      user     @relation(fields: [userId], references: [id], map: "StaffDocument_userId_fkey")
+
+  @@index([userId], map: "StaffDocument_userId_idx")
+}
+
+model stockadjustment {
+  id         String      @id
+  productId  String
+  batchId    String?
+  quantity   Int
+  reason     String
+  date       DateTime    @default(now())
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime
+  tenantId   String
+  stockbatch stockbatch? @relation(fields: [batchId], references: [id], map: "StockAdjustment_batchId_fkey")
+  product    product     @relation(fields: [productId], references: [id], map: "StockAdjustment_productId_fkey")
+  tenant     tenant      @relation(fields: [tenantId], references: [id], map: "StockAdjustment_tenantId_fkey")
+
+  @@index([batchId], map: "StockAdjustment_batchId_fkey")
+  @@index([productId], map: "StockAdjustment_productId_fkey")
+  @@index([tenantId], map: "StockAdjustment_tenantId_fkey")
+}
+
+model stockbatch {
+  id              String            @id
+  productId       String
+  batchNumber     String
+  mfgDate         DateTime?
+  expiryDate      DateTime?
+  quantity        Int               @default(0)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime
+  warehouseId     String?
+  isMigrated      Boolean           @default(false)
+  isVerified      Boolean           @default(true)
+  mrp             Float             @default(0)
+  purchasePrice   Float             @default(0)
+  sellingPrice    Float             @default(0)
+  supplierId      String?
+  tenantId        String
+  stockadjustment stockadjustment[]
+  product         product           @relation(fields: [productId], references: [id], map: "StockBatch_productId_fkey")
+  supplier        supplier?         @relation(fields: [supplierId], references: [id], map: "StockBatch_supplierId_fkey")
+  tenant          tenant            @relation(fields: [tenantId], references: [id], map: "StockBatch_tenantId_fkey")
+  warehouse       warehouse?        @relation(fields: [warehouseId], references: [id], map: "StockBatch_warehouseId_fkey")
+
+  @@index([productId], map: "StockBatch_productId_fkey")
+  @@index([supplierId], map: "StockBatch_supplierId_fkey")
+  @@index([tenantId], map: "StockBatch_tenantId_fkey")
+  @@index([warehouseId], map: "StockBatch_warehouseId_fkey")
+}
+
+model subscription {
+  id                        String                       @id
+  tenantId                  String                       @unique(map: "Subscription_tenantId_key")
+  planId                    String?
+  planName                  subscription_planName?
+  status                    subscription_status          @default(INACTIVE)
+  startDate                 DateTime                     @default(now())
+  endDate                   DateTime?
+  trialEnd                  DateTime?
+  currentPeriodStart        DateTime                     @default(now())
+  currentPeriodEnd          DateTime?
+  cancelAtPeriodEnd         Boolean                      @default(false)
+  isLifetime                Boolean                      @default(false)
+  autoRenew                 Boolean                      @default(true)
+  billingCycle              String                       @default("MONTHLY")
+  amount                    Float                        @default(0)
+  createdAt                 DateTime                     @default(now())
+  updatedAt                 DateTime
+  featuresSnapshot          String?                      @db.LongText
+  limitsSnapshot            String?                      @db.LongText
+  planVersion               Int                          @default(1)
+  externalId                String?                      @unique
+  lastError                 String?                      @db.LongText
+  nextRetryAt               DateTime?
+  processingState           subscription_processingState @default(IDLE)
+  prorationSnapshot         String?                      @db.LongText
+  retryCount                Int                          @default(0)
+  unusedCredit              Float                        @default(0)
+  plan                      plan?                        @relation(fields: [planId], references: [id], map: "Subscription_planId_fkey")
+  tenant                    tenant                       @relation(fields: [tenantId], references: [id], map: "Subscription_tenantId_fkey")
+  subscriptionevent         subscriptionevent[]
+  subscriptionpayment       subscriptionpayment[]
+  subscriptionpendingchange subscriptionpendingchange[]
+
+  @@index([planId], map: "Subscription_planId_fkey")
+  @@index([status], map: "Subscription_status_idx")
+  @@index([tenantId], map: "Subscription_tenantId_idx")
+}
+
+model subscriptionevent {
+  id             String                           @id
+  subscriptionId String
+  previousState  subscriptionevent_previousState?
+  newState       subscriptionevent_newState
+  eventType      String
+  source         subscriptionevent_source         @default(SYSTEM)
+  reason         String?
+  performedBy    String?
+  metadata       String?                          @db.LongText
+  createdAt      DateTime                         @default(now())
+  subscription   subscription                     @relation(fields: [subscriptionId], references: [id], map: "SubscriptionEvent_subscriptionId_fkey")
+
+  @@index([subscriptionId, createdAt], map: "SubscriptionEvent_subscriptionId_createdAt_idx")
+}
+
+model subscriptionpayment {
+  id             String                       @id
+  subscriptionId String
+  tenantId       String
+  amount         Float
+  currency       String                       @default("INR")
+  status         subscriptionpayment_status   @default(SUCCESS)
+  provider       subscriptionpayment_provider @default(MOCK)
+  transactionId  String?
+  invoiceId      String?
+  paidAt         DateTime?
+  createdAt      DateTime                     @default(now())
+  subscription   subscription                 @relation(fields: [subscriptionId], references: [id], map: "SubscriptionPayment_subscriptionId_fkey")
+  tenant         tenant                       @relation(fields: [tenantId], references: [id], map: "SubscriptionPayment_tenantId_fkey")
+
+  @@unique([transactionId, provider], map: "SubscriptionPayment_transactionId_provider_key")
+  @@index([subscriptionId, tenantId], map: "SubscriptionPayment_subscriptionId_tenantId_idx")
+  @@index([tenantId], map: "SubscriptionPayment_tenantId_fkey")
+}
+
+model subscriptionpendingchange {
+  id                String                         @id
+  subscriptionId    String
+  targetPlanId      String
+  targetPlanVersion Int
+  type              subscriptionpendingchange_type
+  effectiveDate     DateTime
+  applied           Boolean                        @default(false)
+  createdAt         DateTime                       @default(now())
+  subscription      subscription                   @relation(fields: [subscriptionId], references: [id], map: "SubscriptionPendingChange_subscriptionId_fkey")
+
+  @@index([effectiveDate], map: "SubscriptionPendingChange_effectiveDate_idx")
+  @@index([subscriptionId], map: "SubscriptionPendingChange_subscriptionId_idx")
+}
+
+model supplier {
+  id                 String           @id
+  name               String
+  mobile             String?
+  email              String?
+  gstin              String?
+  address            String?
+  state              String?
+  outstandingBalance Float            @default(0)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime
+  dlExpiry           DateTime?
+  drugLicenseNo      String?
+  pan                String?
+  type               supplier_type    @default(PHARMA)
+  tenantId           String
+  debitnote          debitnote[]
+  payment            payment[]
+  purchasebill       purchasebill[]
+  purchaseorder      purchaseorder[]
+  stockbatch         stockbatch[]
+  tenant             tenant           @relation(fields: [tenantId], references: [id], map: "Supplier_tenantId_fkey")
+  supplierledger     supplierledger[]
+
+  @@unique([mobile, tenantId], map: "Supplier_mobile_tenantId_key")
+  @@index([tenantId], map: "Supplier_tenantId_fkey")
+}
+
+model supplierledger {
+  id          String              @id
+  supplierId  String
+  type        supplierledger_type @default(PURCHASE)
+  amount      Float               @default(0)
+  balance     Float               @default(0)
+  description String?
+  referenceId String?
+  date        DateTime            @default(now())
+  createdAt   DateTime            @default(now())
+  tenantId    String
+  supplier    supplier            @relation(fields: [supplierId], references: [id], map: "SupplierLedger_supplierId_fkey")
+  tenant      tenant              @relation(fields: [tenantId], references: [id], map: "SupplierLedger_tenantId_fkey")
+
+  @@index([supplierId], map: "SupplierLedger_supplierId_fkey")
+  @@index([tenantId], map: "SupplierLedger_tenantId_fkey")
+}
+
+model systemsetting {
+  key   String @id
+  value String
+}
+
+model taxsettings {
+  id                 String    @id
+  tenantId           String    @unique(map: "TaxSettings_tenantId_key")
+  gstNumber          String?
+  taxType            String?   @default("GST")
+  defaultCurrency    String?   @default("INR")
+  invoicePrefix      String?   @default("INV-")
+  financialYearStart DateTime?
+  paymentMethods     String?
+  enableCreditLimit  Boolean   @default(false)
+  autoGstCalculation Boolean   @default(true)
+  tenant             tenant    @relation(fields: [tenantId], references: [id], map: "TaxSettings_tenantId_fkey")
+}
+
+model tenant {
+  id                  String                @id
+  businessName        String
+  businessType        tenant_businessType?
+  isSetupCompleted    Boolean               @default(false)
+  currentPlan         tenant_currentPlan    @default(FREE)
+  planExpiry          DateTime?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime
+  businessprofile     businessprofile?
+  category            category[]
+  creditnote          creditnote[]
+  customer            customer[]
+  debitnote           debitnote[]
+  expense             expense[]
+  payment             payment[]
+  product             product[]
+  purchasebill        purchasebill[]
+  purchasebillitem    purchasebillitem[]
+  purchaseorder       purchaseorder[]
+  purchaseorderitem   purchaseorderitem[]
+  role                role[]
+  saleinvoice         saleinvoice[]
+  saleinvoiceitem     saleinvoiceitem[]
+  salesorder          salesorder[]
+  salesorderitem      salesorderitem[]
+  stockadjustment     stockadjustment[]
+  stockbatch          stockbatch[]
+  subscription        subscription?
+  subscriptionpayment subscriptionpayment[]
+  supplier            supplier[]
+  supplierledger      supplierledger[]
+  taxsettings         taxsettings?
+  tenantsettings      tenantsettings?
+  user                user[]
+  warehouse           warehouse[]
+}
+
+model tenantsettings {
+  id                       String  @id
+  tenantId                 String  @unique(map: "TenantSettings_tenantId_key")
+  businessProfileCompleted Boolean @default(false)
+  taxCompleted             Boolean @default(false)
+  invoiceCompleted         Boolean @default(false)
+  notificationCompleted    Boolean @default(false)
+  enableMedicalInfo        Boolean @default(false)
+  tenant                   tenant  @relation(fields: [tenantId], references: [id], map: "TenantSettings_tenantId_fkey")
+}
+
+model trusteddevice {
+  id          String   @id
+  userId      String
+  fingerprint String   @unique(map: "TrustedDevice_fingerprint_key")
+  deviceName  String?
+  lastUsed    DateTime @default(now())
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  user        user     @relation(fields: [userId], references: [id], map: "TrustedDevice_userId_fkey")
+
+  @@index([userId, fingerprint], map: "TrustedDevice_userId_fingerprint_idx")
+}
+
+model user {
+  id                                           String                  @id
+  name                                         String
+  email                                        String                  @unique(map: "User_email_key")
+  mobile                                       String                  @unique(map: "User_mobile_key")
+  password                                     String?
+  role                                         user_role
+  createdAt                                    DateTime                @default(now())
+  updatedAt                                    DateTime
+  avatarKey                                    String?
+  createdById                                  String?
+  department                                   String?
+  designation                                  String?
+  employeeId                                   String?                 @unique(map: "User_employeeId_key")
+  employmentType                               user_employmentType     @default(FULL_TIME)
+  inviteToken                                  String?                 @unique(map: "User_inviteToken_key")
+  inviteTokenExpires                           DateTime?
+  isActive                                     Boolean                 @default(true)
+  isDeleted                                    Boolean                 @default(false)
+  isInvited                                    Boolean                 @default(false)
+  joinDate                                     DateTime?
+  lastGeoLat                                   Float?
+  lastGeoLon                                   Float?
+  lastGeoTimestamp                             DateTime?
+  lastKnownIp                                  String?
+  reportingManagerId                           String?
+  salary                                       Float?
+  status                                       user_status             @default(PENDING)
+  tenantId                                     String?
+  workShift                                    String?
+  attendance                                   attendance[]
+  auditlog                                     auditlog[]
+  incident                                     incident[]
+  leaverequest_leaverequest_approvedByIdTouser leaverequest[]          @relation("leaverequest_approvedByIdTouser")
+  leaverequest_leaverequest_userIdTouser       leaverequest[]          @relation("leaverequest_userIdTouser")
+  notification                                 notification[]
+  notificationpreference                       notificationpreference?
+  session                                      session[]
+  staffdocument                                staffdocument[]
+  trusteddevice                                trusteddevice[]
+  user_user_createdByIdTouser                  user?                   @relation("user_createdByIdTouser", fields: [createdById], references: [id], map: "User_createdById_fkey")
+  other_user_user_createdByIdTouser            user[]                  @relation("user_createdByIdTouser")
+  user_user_reportingManagerIdTouser           user?                   @relation("user_reportingManagerIdTouser", fields: [reportingManagerId], references: [id], map: "User_reportingManagerId_fkey")
+  other_user_user_reportingManagerIdTouser     user[]                  @relation("user_reportingManagerIdTouser")
+  tenant                                       tenant?                 @relation(fields: [tenantId], references: [id], map: "User_tenantId_fkey")
+  userrole                                     userrole[]
+
+  @@index([createdById], map: "User_createdById_fkey")
+  @@index([reportingManagerId], map: "User_reportingManagerId_fkey")
+  @@index([tenantId], map: "User_tenantId_fkey")
+}
+
+model userrole {
+  id     String @id
+  userId String
+  roleId String
+  role   role   @relation(fields: [roleId], references: [id], map: "UserRole_roleId_fkey")
+  user   user   @relation(fields: [userId], references: [id], map: "UserRole_userId_fkey")
+
+  @@unique([userId, roleId], map: "UserRole_userId_roleId_key")
+  @@index([roleId], map: "UserRole_roleId_fkey")
+}
+
+model warehouse {
+  id         String       @id
+  name       String
+  location   String?
+  isDefault  Boolean      @default(false)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime
+  tenantId   String
+  stockbatch stockbatch[]
+  tenant     tenant       @relation(fields: [tenantId], references: [id], map: "Warehouse_tenantId_fkey")
+
+  @@index([tenantId], map: "Warehouse_tenantId_fkey")
+}
+
+model webhookevent {
+  id              String                @id
+  provider        webhookevent_provider
+  providerEventId String                @unique(map: "WebhookEvent_providerEventId_key")
+  eventType       String
+  payload         String                @db.LongText
+  status          webhookevent_status   @default(PENDING)
+  retryCount      Int                   @default(0)
+  nextRetryAt     DateTime?
+  error           String?               @db.LongText
+  processedAt     DateTime?
+  createdAt       DateTime              @default(now())
+
+  @@index([nextRetryAt], map: "WebhookEvent_nextRetryAt_idx")
+  @@index([status], map: "WebhookEvent_status_idx")
+}
+
+enum webhookevent_provider {
+  RAZORPAY
+  STRIPE
+  MOCK
+}
+
+enum incident_severity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum leaverequest_type {
+  SICK
+  PAID
+  UNPAID
+}
+
+enum subscriptionevent_previousState {
+  INACTIVE
+  TRIAL
+  ACTIVE
+  PENDING
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+  EXPIRED
+}
+
+enum supplierledger_type {
+  PURCHASE
+  PAYMENT
+  RETURN
+  ADJUSTMENT
+}
+
+enum tenant_businessType {
+  PHARMACY
+  HOSPITAL
+  WHOLESALER
+  RETAILER
+  DISTRIBUTOR
+  MEDICAL_STORE
+}
+
+enum incident_status {
+  ACTIVE
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum rolepermission_scope {
+  FULL
+  LIMITED
+}
+
+enum subscription_planName {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum subscriptionevent_newState {
+  INACTIVE
+  TRIAL
+  ACTIVE
+  PENDING
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+  EXPIRED
+}
+
+enum auditlog_severity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum payment_mode {
+  CASH
+  UPI
+  CARD
+  BANK_TRANSFER
+  CHEQUE
+}
+
+enum subscription_status {
+  INACTIVE
+  TRIAL
+  ACTIVE
+  PENDING
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+  EXPIRED
+}
+
+enum subscriptionpendingchange_type {
+  UPGRADE
+  DOWNGRADE
+}
+
+enum tenant_currentPlan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum attendance_status {
+  PRESENT
+  ABSENT
+  LATE
+  HALFDAY
+}
+
+enum expense_paymentMode {
+  CASH
+  UPI
+  CARD
+  BANK_TRANSFER
+  CHEQUE
+}
+
+enum leaverequest_status {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum subscriptionevent_source {
+  SYSTEM
+  ADMIN
+  WEBHOOK
+}
+
+enum subscriptionpayment_status {
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum user_role {
+  SUPER_ADMIN
+  BUSINESS_ADMIN
+  MANAGER
+  CASHIER
+  PHARMACIST
+}
+
+enum webhookevent_status {
+  PENDING
+  PROCESSED
+  FAILED
+}
+
+enum subscriptionpayment_provider {
+  RAZORPAY
+  STRIPE
+  MOCK
+}
+
+enum saleinvoice_type {
+  TAX_INVOICE
+  BILL_OF_SUPPLY
+}
+
+enum businessprofile_drugLicenseStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum purchasebill_status {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+enum customer_customerType {
+  regular
+  wholesale
+}
+
+enum businessprofile_fssaiStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum plan_type {
+  FREE
+  SUBSCRIPTION
+  LIFETIME
+}
+
+enum supplier_type {
+  PHARMA
+  NON_PHARMA
+}
+
+enum user_employmentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+}
+
+enum businessprofile_gstStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum saleinvoice_status {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+enum businessprofile_panStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum subscription_processingState {
+  IDLE
+  UPDATING
+  LOCKED
+}
+
+enum user_status {
+  PENDING
+  ACTIVE
+  DISABLED
+}

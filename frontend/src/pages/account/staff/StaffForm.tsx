@@ -1,0 +1,289 @@
+import React, { useState } from 'react';
+import { User, X, Shield, Mail, Phone, Briefcase, Calendar, DollarSign, Clock, UserCheck } from 'lucide-react';
+import alerts from '../../../utils/alerts';
+import { useFormDraft } from '../../../hooks/useFormDraft';
+import DraftRestorationModal from '../../../components/DraftRestorationModal';
+import toast from 'react-hot-toast';
+
+interface StaffFormProps {
+  onClose: () => void;
+  onSuccess: () => void;
+  initialData?: any;
+  title: string;
+  submitLabel: string;
+  apiCall: (data: any) => Promise<any>;
+}
+
+const StaffForm: React.FC<StaffFormProps> = ({ onClose, onSuccess, initialData, title, submitLabel, apiCall }) => {
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    name: initialData?.name || '',
+    email: initialData?.email || '',
+    mobile: initialData?.mobile || '',
+    role: initialData?.role || 'CASHIER',
+    employeeId: initialData?.employeeId || '',
+    department: initialData?.department || '',
+    designation: initialData?.designation || '',
+    employmentType: initialData?.employmentType || 'FULL_TIME',
+    joinDate: initialData?.joinDate?.split('T')[0] || new Date().toISOString().split('T')[0],
+    salary: initialData?.salary || '',
+    workShift: initialData?.workShift || '',
+    isActive: initialData?.isActive !== undefined ? initialData.isActive : true
+  });
+
+  // Draft Preservation Hook
+  const { hasDraft, draftData, saveDraft, clearDraft, restoreDraft } = useFormDraft(
+    initialData?.id ? `edit_staff_${initialData.id}` : 'add_staff',
+    formData,
+    {
+      autoRestore: false, // Prompt instead of auto-restore
+      onRestore: (data) => {
+        setFormData(data);
+        toast.success('Staff draft restored');
+      }
+    }
+  );
+
+  // Auto-save draft when data changes
+  React.useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      saveDraft(formData);
+    }, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [formData, saveDraft]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loading) return; // Race condition protection
+
+    setLoading(true);
+    try {
+      await apiCall(formData);
+      alerts.success('Success', `${title} successfully`);
+      clearDraft(); // Clear draft on success
+      onSuccess();
+      onClose();
+    } catch (error: any) {
+      alerts.friendlyError(error.response?.data?.error || `Something went wrong`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <DraftRestorationModal 
+        isOpen={hasDraft}
+        formName={initialData ? `editing staff member` : 'new staff registration'}
+        onRestore={() => restoreDraft()}
+        onDiscard={clearDraft}
+        timestamp={(draftData as any)?.timestamp}
+      />
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="bg-white w-full max-w-4xl rounded-[2.5rem] shadow-2xl shadow-slate-900/20 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+        {/* Header */}
+        <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-gradient-to-r from-blue-500 to-indigo-600 text-white">
+          <div className="flex items-center gap-4">
+            <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-md">
+              <User size={24} />
+            </div>
+            <div>
+              <h2 className="text-2xl font-black uppercase tracking-tight leading-none">{title}</h2>
+              <p className="text-blue-100 text-xs mt-1 font-bold uppercase tracking-widest">Employee Provisioning Suite</p>
+            </div>
+          </div>
+          <button 
+            onClick={onClose}
+            className="p-2 hover:bg-white/10 rounded-full transition-colors"
+          >
+            <X size={24} />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="overflow-y-auto p-8 bg-white custom-scrollbar">
+          <form id="staff-form" onSubmit={handleSubmit} className="space-y-10">
+            {/* Identity Group */}
+            <section>
+              <div className="flex items-center gap-2 mb-6 border-l-4 border-blue-500 pl-4">
+                <Shield className="text-blue-500" size={18} />
+                <h3 className="text-xs font-black uppercase tracking-widest text-slate-500">Core Identity & Access</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <FormField 
+                  label="Full Name" 
+                  value={formData.name} 
+                  onChange={(v: string) => setFormData({...formData, name: v})} 
+                  icon={<User size={18}/>} 
+                  required 
+                />
+                <FormField 
+                  label="Email Address" 
+                  type="email"
+                  value={formData.email} 
+                  onChange={(v: string) => setFormData({...formData, email: v})} 
+                  icon={<Mail size={18}/>} 
+                  required 
+                />
+                <FormField 
+                  label="Mobile Number" 
+                  value={formData.mobile} 
+                  onChange={(v: string) => setFormData({...formData, mobile: v})} 
+                  icon={<Phone size={18}/>} 
+                  required 
+                />
+                <div className="flex flex-col gap-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Assigned Role</label>
+                  <div className="relative">
+                    <Shield className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
+                    <select 
+                      value={formData.role}
+                      onChange={(e) => setFormData({...formData, role: e.target.value})}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3.5 pl-12 pr-6 text-sm font-bold text-slate-700 appearance-none focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all uppercase tracking-tight"
+                    >
+                      <option value="CASHIER">Cashier</option>
+                      <option value="PHARMACIST">Pharmacist</option>
+                      <option value="MANAGER">Manager</option>
+                      <option value="BUSINESS_ADMIN">Admin</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Employment Group */}
+            <section>
+              <div className="flex items-center gap-2 mb-6 border-l-4 border-emerald-500 pl-4">
+                <Briefcase className="text-emerald-500" size={18} />
+                <h3 className="text-xs font-black uppercase tracking-widest text-slate-500">Employment Details</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <FormField 
+                  label="Employee ID (Unique)" 
+                  value={formData.employeeId} 
+                  onChange={(v: string) => setFormData({...formData, employeeId: v})} 
+                  icon={<Briefcase size={18}/>} 
+                />
+                <FormField 
+                  label="Department" 
+                  value={formData.department} 
+                  onChange={(v: string) => setFormData({...formData, department: v})} 
+                  icon={<Briefcase size={18}/>} 
+                />
+                <FormField 
+                  label="Designation" 
+                  value={formData.designation} 
+                  onChange={(v: string) => setFormData({...formData, designation: v})} 
+                  icon={<Briefcase size={18}/>} 
+                />
+                <div className="flex flex-col gap-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Employment Type</label>
+                  <select 
+                    value={formData.employmentType}
+                    onChange={(e) => setFormData({...formData, employmentType: e.target.value})}
+                    className="bg-slate-50 border border-slate-200 rounded-2xl py-3.5 px-6 text-sm font-bold text-slate-700 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all"
+                  >
+                    <option value="FULL_TIME">Full Time</option>
+                    <option value="PART_TIME">Part Time</option>
+                    <option value="CONTRACT">Contract</option>
+                  </select>
+                </div>
+                <FormField 
+                  label="Join Date" 
+                  type="date"
+                  value={formData.joinDate} 
+                  onChange={(v: string) => setFormData({...formData, joinDate: v})} 
+                  icon={<Calendar size={18}/>} 
+                />
+                <FormField 
+                  label="Salary / Wage (Monthly)" 
+                  type="number"
+                  value={formData.salary} 
+                  onChange={(v: string) => setFormData({...formData, salary: v})} 
+                  icon={<DollarSign size={18}/>} 
+                />
+                <FormField 
+                  label="Work Shift" 
+                  value={formData.workShift} 
+                  onChange={(v: string) => setFormData({...formData, workShift: v})} 
+                  placeholder="e.g. 9:00 AM - 6:00 PM"
+                  icon={<Clock size={18}/>} 
+                />
+                {initialData && (
+                  <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                    <div className="p-3 bg-white rounded-xl shadow-sm">
+                      <UserCheck className={formData.isActive ? 'text-emerald-500' : 'text-slate-400'} size={20} />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-[10px] font-black uppercase text-slate-400 leading-none">Account Status</p>
+                      <p className="text-sm font-bold text-slate-700 mt-1 uppercase">{formData.isActive ? 'Active' : 'Inactive'}</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={formData.isActive}
+                        onChange={(e) => setFormData({...formData, isActive: e.target.checked})}
+                        className="sr-only peer" 
+                      />
+                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                    </label>
+                  </div>
+                )}
+              </div>
+            </section>
+          </form>
+        </div>
+
+        {/* Footer */}
+        <div className="p-8 border-t border-slate-50 bg-slate-50/50 flex items-center justify-between">
+          <button 
+            type="button"
+            onClick={onClose}
+            className="md:px-8 px-4 py-3 text-slate-500 font-black uppercase tracking-widest text-xs hover:text-slate-800 transition-colors"
+          >
+            Discard Changes
+          </button>
+          <div className="flex gap-4">
+            <button 
+              form="staff-form"
+              type="submit"
+              disabled={loading}
+              className="md:px-12 px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-blue-500/20 hover:shadow-2xl hover:shadow-blue-500/40 hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  Processing...
+                </>
+              ) : submitLabel}
+            </button>
+          </div>
+        </div>
+        </div>
+      </div>
+    </>
+  );
+};
+
+const FormField = ({ label, type = 'text', value, onChange, icon, required, placeholder }: { label: string, type?: string, value: any, onChange: (v: string) => void, icon?: React.ReactNode, required?: boolean, placeholder?: string }) => (
+  <div className="flex flex-col gap-2 group">
+    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 transition-colors group-focus-within:text-blue-500">
+      {label} {required && <span className="text-rose-500 ml-1">*</span>}
+    </label>
+    <div className="relative">
+      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors pointer-events-none">
+        {icon}
+      </div>
+      <input 
+        type={type}
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+        required={required}
+        placeholder={placeholder}
+        className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3.5 pl-12 pr-6 text-sm font-bold text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all"
+      />
+    </div>
+  </div>
+);
+
+export default StaffForm;

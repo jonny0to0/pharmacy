@@ -1,0 +1,13 @@
+
+content = open(r'c:\xampp\htdocs\pharmacy_billing\frontend\src\pages\Dashboard.tsx', 'r', encoding='utf-8').read()
+single_quotes = content.count("'")
+double_quotes = content.count('"')
+backticks = content.count('`')
+print(f"Dashboard.tsx:")
+print(f"Single quotes: {single_quotes}")
+print(f"Double quotes: {double_quotes}")
+print(f"Backticks: {backticks}")
+print(f"{{: {content.count('{')}")
+print(f"}}: {content.count('}')}")
+print(f"(: {content.count('(')}")
+print(f"): {content.count(')')}")
