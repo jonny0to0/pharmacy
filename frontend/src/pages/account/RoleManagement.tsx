@@ -3,15 +3,13 @@ import api from '../../api/axios';
 import Modal from '../../components/Modal';
 import { 
   Plus, Shield, Users, ChevronRight, ShieldCheck, 
-  Trash2, Copy, Save, Loader2, AlertCircle, 
-  Check, X, Monitor 
+  Trash2, Save, Loader2, AlertCircle, Check, X, Info, Edit2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import FormField from '../../components/ui/FormField';
 import Input from '../../components/ui/Input';
 import Textarea from '../../components/ui/Textarea';
-// Assuming usePermission exists or providing a fallback
-const usePermission = () => ({ hasPermission: (p: string) => true });
+import { usePermission } from '../../hooks/usePermission';
 
 interface Permission {
   id: string;
@@ -50,6 +48,11 @@ const RoleManagement = () => {
   const [showAddRoleModal, setShowAddRoleModal] = useState(false);
   const [newRoleData, setNewRoleData] = useState({ name: '', description: '' });
   const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  
+  const [showEditRoleModal, setShowEditRoleModal] = useState(false);
+  const [editRoleData, setEditRoleData] = useState({ name: '', description: '' });
+  const [updatingRole, setUpdatingRole] = useState(false);
 
   const fetchInitialData = async () => {
     try {
@@ -62,7 +65,11 @@ const RoleManagement = () => {
       setModules(modulesRes.data);
       
       if (rolesRes.data?.length > 0) {
-        handleSelectRole(rolesRes.data[0]);
+        // Preserving the selected role if reloading
+        const currentSelected = selectedRole 
+          ? rolesRes.data.find((r: Role) => r.id === selectedRole.id) 
+          : null;
+        handleSelectRole(currentSelected || rolesRes.data[0]);
       }
     } catch (err) {
       toast.error("Failed to load permission matrix");
@@ -81,6 +88,10 @@ const RoleManagement = () => {
       name: role.name,
       description: role.description,
       permissionIds: role.permissions.map(p => p.permission.id)
+    });
+    setEditRoleData({
+      name: role.name,
+      description: role.description || ''
     });
   };
 
@@ -125,9 +136,11 @@ const RoleManagement = () => {
       setShowAddRoleModal(false);
       setNewRoleData({ name: '', description: '' });
       await fetchInitialData();
-      const allRoles = await api.get('/roles');
-      const newRole = allRoles.data.find((r: any) => r.name === newRoleData.name.toUpperCase()) || res.data;
-      handleSelectRole(newRole);
+      
+      // Auto select the new role
+      if (res.data) {
+        handleSelectRole(res.data);
+      }
     } catch (err: any) {
       toast.error(err.response?.data?.error || "Failed to create role");
     } finally {
@@ -135,126 +148,214 @@ const RoleManagement = () => {
     }
   };
 
+  const handleEditRoleDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRole) return;
+    if (!editRoleData.name) {
+      toast.error("Role name is required");
+      return;
+    }
+
+    try {
+      setUpdatingRole(true);
+      const res = await api.put(`/roles/${selectedRole.id}`, editRoleData);
+      toast.success("Role details updated successfully");
+      setShowEditRoleModal(false);
+      
+      // Update data and refresh selection
+      await fetchInitialData();
+      
+      const updatedRole = {
+        ...selectedRole,
+        name: res.data.name,
+        description: res.data.description
+      };
+      setSelectedRole(updatedRole);
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || "Failed to update role details");
+    } finally {
+      setUpdatingRole(false);
+    }
+  };
+
+  const handleDeleteRole = async () => {
+    if (!selectedRole || selectedRole.isSystem) return;
+    if (!window.confirm(`Are you sure you want to delete the custom role "${selectedRole.name}"?`)) return;
+
+    try {
+      setDeleting(true);
+      await api.delete(`/roles/${selectedRole.id}`);
+      toast.success("Role deleted successfully");
+      setSelectedRole(null);
+      await fetchInitialData();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || "Failed to delete role");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] space-y-6">
-        <div className="w-20 h-20 bg-blue-50 rounded-3xl flex items-center justify-center text-blue-600 animate-bounce transition-all">
-          <Shield size={40} />
-        </div>
-        <p className="text-sm font-black text-slate-400 uppercase tracking-[0.3em] animate-pulse">Initialising Matrix...</p>
+      <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
+        <div className="w-12 h-12 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin" />
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest animate-pulse">Loading Permission Matrix...</p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full animate-in fade-in duration-700 bg-white">
+    <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-6">
       {/* Header */}
-      <div className="p-8 md:p-10 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-black text-slate-800 tracking-tighter">Roles & Permissions</h1>
-          <p className="text-sm text-slate-500 font-bold mt-1 uppercase tracking-widest opacity-60">Staff Access Control Matrix</p>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="bg-blue-500 w-8 h-1 rounded-full"></span>
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-600">Access Control Control-room</span>
+          </div>
+          <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">Roles & Permissions</h1>
+          <p className="text-slate-500 text-xs font-medium">Configure functional access profiles for your team members.</p>
         </div>
         <button 
           onClick={() => setShowAddRoleModal(true)}
-          className="flex items-center gap-3 px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-[2rem] text-xs font-black transition-all shadow-2xl shadow-blue-200 active:scale-95 group"
+          className="flex items-center justify-center gap-2 px-6 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-bold transition-all shadow-md shadow-blue-100 active:scale-95 group self-start sm:self-auto"
         >
-          <Plus size={18} className="group-hover:rotate-90 transition-transform" /> New Custom Role
+          <Plus size={16} className="group-hover:rotate-90 transition-transform" /> Add Custom Role
         </button>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Roles List */}
-        <div className="w-96 border-r border-slate-100 bg-slate-50/20 p-8 space-y-6 overflow-y-auto">
-          <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] px-2 text-center underline decoration-slate-200 underline-offset-8">Deployment Profiles</h3>
-          <div className="space-y-4">
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
+        {/* Mobile Role Switcher (Hidden on large screens) */}
+        <div className="w-full lg:hidden flex flex-col gap-2">
+          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Selected Profile</label>
+          <select
+            value={selectedRole?.id || ''}
+            onChange={(e) => {
+              const role = roles.find(r => r.id === e.target.value);
+              if (role) handleSelectRole(role);
+            }}
+            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 font-bold text-slate-700 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+          >
+            {roles.map(role => (
+              <option key={role.id} value={role.id}>
+                {role.name} {role.isSystem ? '(System)' : '(Custom)'}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Roles List Sidebar (Hidden on mobile) */}
+        <div className="hidden lg:flex flex-col w-80 bg-white border border-slate-150 rounded-2xl p-6 space-y-4 shrink-0 shadow-sm">
+          <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Access Profiles</h3>
+          <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
             {roles.map(role => (
               <button
                 key={role.id}
                 onClick={() => handleSelectRole(role)}
-                className={`w-full flex items-center justify-between p-5 rounded-[2.5rem] transition-all border-2 ${
+                className={`w-full flex items-center justify-between p-4 rounded-xl transition-all border ${
                   selectedRole?.id === role.id
-                    ? 'bg-white border-blue-600 shadow-2xl shadow-blue-100 text-blue-600 scale-[1.02]'
-                    : 'bg-transparent border-transparent text-slate-500 hover:bg-white hover:border-slate-200'
+                    ? 'bg-blue-50/50 border-blue-200 text-blue-700 shadow-sm'
+                    : 'bg-transparent border-transparent text-slate-600 hover:bg-slate-50 hover:border-slate-100'
                 }`}
               >
-                <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
                     selectedRole?.id === role.id ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'
                   }`}>
-                    {role.isSystem ? <Shield size={20} /> : <Users size={20} />}
+                    {role.isSystem ? <Shield size={16} /> : <Users size={16} />}
                   </div>
                   <div className="text-left">
-                    <p className="text-base font-black truncate max-w-[160px] tracking-tight lowercase first-letter:uppercase">{role.name.toLowerCase()}</p>
-                    {role.isSystem && <span className="text-[9px] font-black uppercase text-blue-400/60 tracking-widest">Internal Shield</span>}
+                    <p className="text-sm font-bold truncate max-w-[160px] tracking-tight">{role.name}</p>
+                    <span className="text-[9px] font-bold uppercase tracking-wider opacity-60">
+                      {role.isSystem ? 'System Role' : 'Custom'}
+                    </span>
                   </div>
                 </div>
-                {selectedRole?.id === role.id && <ChevronRight size={18} />}
+                {selectedRole?.id === role.id && <ChevronRight size={16} />}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Permission Matrix */}
-        <div className="flex-1 overflow-y-auto bg-white p-10">
+        {/* Permission Matrix Detail Panel */}
+        <div className="flex-1 w-full bg-white border border-slate-150 rounded-2xl p-6 md:p-8 shadow-sm space-y-6">
           {selectedRole ? (
-            <div className="space-y-12 max-w-6xl mx-auto pb-20">
-              <div className="flex flex-col xl:flex-row xl:items-center justify-between bg-slate-900 rounded-[3rem] p-10 text-white gap-8 shadow-2xl shadow-slate-900/20 relative overflow-hidden group">
-                <div className="flex items-center gap-8 relative z-10">
-                   <div className="w-20 h-20 bg-white/10 rounded-[2rem] flex items-center justify-center text-blue-400 shadow-inner group-hover:scale-110 transition-transform duration-500">
-                     <ShieldCheck size={40} />
-                   </div>
-                   <div>
-                     <h2 className="text-3xl font-black tracking-tighter">{selectedRole.name}</h2>
-                     <p className="text-sm text-slate-400 font-bold max-w-lg mt-1 italic opacity-80">{selectedRole.description || 'System-governed profile for infrastructure operations.'}</p>
-                   </div>
-                </div>
+            <div className="space-y-6">
+              {/* Role Header Banner */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between bg-slate-900 rounded-2xl p-6 md:p-8 text-white gap-4 relative overflow-hidden">
                 <div className="flex items-center gap-4 relative z-10">
+                  <div className="w-14 h-14 bg-white/10 rounded-xl flex items-center justify-center text-blue-400 shrink-0">
+                    <ShieldCheck size={28} />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-extrabold tracking-tight">{selectedRole.name}</h2>
+                    <p className="text-xs text-slate-400 mt-1 max-w-xl font-medium leading-relaxed">
+                      {selectedRole.description || 'Custom administrative access configuration for this business tenant.'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 relative z-10 shrink-0 self-end md:self-auto">
                   {!selectedRole.isSystem && (
-                    <button className="p-4 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-[1.5rem] transition-all active:scale-95">
-                      <Trash2 size={24} />
-                    </button>
+                    <>
+                      <button 
+                        onClick={() => {
+                          setEditRoleData({
+                            name: selectedRole.name,
+                            description: selectedRole.description || ''
+                          });
+                          setShowEditRoleModal(true);
+                        }}
+                        className="p-3 text-slate-400 hover:text-blue-400 hover:bg-blue-400/10 rounded-xl transition-all active:scale-95"
+                        title="Edit Role Details"
+                      >
+                        <Edit2 size={20} />
+                      </button>
+                      <button 
+                        onClick={handleDeleteRole}
+                        disabled={deleting}
+                        className="p-3 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all active:scale-95"
+                        title="Delete Custom Role"
+                      >
+                        {deleting ? <Loader2 size={20} className="animate-spin" /> : <Trash2 size={20} />}
+                      </button>
+                    </>
                   )}
-                  <button className="flex items-center gap-2 px-6 py-4 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 group">
-                    <Copy size={18} className="group-hover:scale-110 transition-transform" /> Clone Matrix
-                  </button>
                   <button 
                     onClick={handleSavePermissions}
                     disabled={saving}
-                    className="flex items-center gap-3 px-10 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all shadow-xl shadow-blue-500/20 disabled:opacity-50 active:scale-95"
+                    className="flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md shadow-blue-500/10 disabled:opacity-50 active:scale-95"
                   >
-                    {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} 
-                    Authorize Matrix
+                    {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} 
+                    Save Permissions
                   </button>
                 </div>
-                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 blur-[100px] -mr-32 -mt-32 rounded-full" />
+                {/* Decorative glow */}
+                <div className="absolute top-0 right-0 w-48 h-48 bg-blue-600/10 blur-3xl -mr-16 -mt-16 rounded-full" />
               </div>
 
               {selectedRole.isSystem && (
-                <div className="flex items-center gap-4 p-6 bg-amber-50 border border-amber-100 rounded-[2rem] text-amber-700 shadow-sm border-dashed">
-                   <AlertCircle size={24} className="shrink-0" />
-                   <p className="text-[10px] font-black tracking-widest uppercase leading-loose">Protected Infrastructure: This role is vital for core system stability. Advanced permissions are read-only to prevent terminal failures.</p>
+                <div className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-100 rounded-xl text-amber-800 text-xs font-medium">
+                  <AlertCircle size={18} className="shrink-0 text-amber-600" />
+                  <p>System roles are system-defined and their default permissions cannot be modified.</p>
                 </div>
               )}
 
-              {/* Matrix Grid */}
-              <div className="space-y-8">
-                <div className="grid grid-cols-5 gap-6 px-10 text-[11px] font-black text-slate-400 uppercase tracking-[0.4em] pb-2 border-b border-slate-50">
-                  <div className="col-span-1">Subsystem Area</div>
-                  <div className="text-center">Ignite</div>
-                  <div className="text-center">Observe</div>
-                  <div className="text-center">Modify</div>
-                  <div className="text-center">Purge</div>
+              {/* Matrix Grid (Desktop View) */}
+              <div className="hidden sm:block space-y-3">
+                <div className="grid grid-cols-5 gap-4 px-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest pb-3 border-b border-slate-100">
+                  <div className="col-span-1">Module / Resource</div>
+                  <div className="text-center">Create</div>
+                  <div className="text-center">View / Read</div>
+                  <div className="text-center">Update / Edit</div>
+                  <div className="text-center">Delete</div>
                 </div>
 
-                <div className="space-y-6">
+                <div className="space-y-2">
                   {modules.map(module => (
-                    <div key={module.id} className="grid grid-cols-5 gap-6 items-center p-10 bg-slate-50/30 rounded-[3rem] border border-transparent hover:bg-white hover:border-slate-100 hover:shadow-2xl hover:shadow-slate-200/50 transition-all group">
+                    <div key={module.id} className="grid grid-cols-5 gap-4 items-center px-6 py-4 bg-slate-50/50 hover:bg-slate-50 rounded-xl border border-slate-100 hover:border-slate-200 transition-all group">
                       <div className="col-span-1">
-                        <span className="text-lg font-black text-slate-800 group-hover:text-blue-600 transition-colors uppercase tracking-tighter">{module.name}</span>
-                        <div className="flex items-center gap-2 mt-2">
-                           <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
-                           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{module.permissions.length} nodes active</p>
-                        </div>
+                        <span className="text-sm font-bold text-slate-800 uppercase tracking-tight">{module.name}</span>
+                        <p className="text-[9px] text-slate-400 font-semibold mt-0.5">{module.permissions.length} actions available</p>
                       </div>
                       
                       {['CREATE', 'READ', 'UPDATE', 'DELETE'].map(action => {
@@ -266,17 +367,18 @@ const RoleManagement = () => {
                             {permission ? (
                               <button
                                 onClick={() => togglePermission(permission.id)}
-                                className={`w-14 h-14 rounded-3xl flex items-center justify-center transition-all duration-300 ${
+                                disabled={selectedRole.isSystem}
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
                                   isChecked 
-                                    ? 'bg-blue-600 text-white shadow-2xl shadow-blue-400/40 rotate-[360deg]' 
-                                    : 'bg-white border-2 border-slate-100 text-slate-200 hover:border-blue-200 hover:text-blue-400 hover:shadow-xl hover:shadow-blue-50/50'
-                                }`}
+                                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-100' 
+                                    : 'bg-white border border-slate-200 text-slate-300 hover:border-slate-350 hover:text-slate-500'
+                                } ${selectedRole.isSystem ? 'cursor-not-allowed opacity-75' : 'cursor-pointer active:scale-95'}`}
                               >
-                                {isChecked ? <Check size={24} strokeWidth={4} /> : <div className="w-2 h-2 bg-slate-100 rounded-full" />}
+                                {isChecked ? <Check size={16} strokeWidth={3} /> : <div className="w-1.5 h-1.5 bg-slate-200 rounded-full" />}
                               </button>
                             ) : (
-                              <div className="w-14 h-14 flex items-center justify-center opacity-10">
-                                <X size={20} className="text-slate-400" />
+                              <div className="w-8 h-8 flex items-center justify-center opacity-20">
+                                <X size={14} className="text-slate-400" />
                               </div>
                             )}
                           </div>
@@ -286,11 +388,53 @@ const RoleManagement = () => {
                   ))}
                 </div>
               </div>
+
+              {/* Mobile View Card Matrix (Active on mobile screens) */}
+              <div className="sm:hidden space-y-4">
+                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Module Permissions</h3>
+                <div className="space-y-4">
+                  {modules.map(module => (
+                    <div key={module.id} className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-4">
+                      <div>
+                        <span className="text-sm font-bold text-slate-800 uppercase tracking-tight">{module.name}</span>
+                        <p className="text-[9px] text-slate-400 font-semibold">{module.permissions.length} actions configured</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        {['CREATE', 'READ', 'UPDATE', 'DELETE'].map(action => {
+                          const permission = module.permissions.find(p => p.action === action);
+                          const isChecked = permission ? roleForm.permissionIds.includes(permission.id) : false;
+                          if (!permission) return null;
+
+                          return (
+                            <button
+                              key={action}
+                              onClick={() => togglePermission(permission.id)}
+                              disabled={selectedRole.isSystem}
+                              className={`flex items-center gap-2 p-3 rounded-xl border text-xs font-bold transition-all justify-center ${
+                                isChecked
+                                  ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-sm'
+                                  : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                              } ${selectedRole.isSystem ? 'opacity-70 cursor-not-allowed' : 'active:scale-95'}`}
+                            >
+                              <div className={`w-4 h-4 rounded flex items-center justify-center shrink-0 border ${
+                                isChecked ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300'
+                              }`}>
+                                {isChecked && <Check size={10} strokeWidth={4} />}
+                              </div>
+                              <span className="capitalize">{action.toLowerCase()}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center text-center space-y-8 opacity-20">
-              <ShieldCheck size={120} className="text-slate-300 animate-pulse" />
-              <p className="text-sm font-black text-slate-400 uppercase tracking-[0.5em]">Sync a matrix profile</p>
+            <div className="h-full py-16 flex flex-col items-center justify-center text-center space-y-4 opacity-40">
+              <ShieldCheck size={80} className="text-slate-300 animate-pulse" />
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Select an Access Profile</p>
             </div>
           )}
         </div>
@@ -301,8 +445,8 @@ const RoleManagement = () => {
         onClose={() => setShowAddRoleModal(false)}
         title={
           <div className="flex flex-col gap-1">
-            <h2 className="text-3xl font-black text-slate-800 tracking-tighter">New Custom Role</h2>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Construct staff deployment profile</p>
+            <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">New Custom Role</h2>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Define custom staff access level</p>
           </div>
         }
         maxWidth="max-w-md"
@@ -311,30 +455,75 @@ const RoleManagement = () => {
             type="submit"
             form="roleForm"
             disabled={creating}
-            className="w-full py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-[2rem] font-black shadow-2xl shadow-blue-200 transition-all active:scale-95 flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50"
+            className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-md shadow-blue-200 transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 text-xs"
           >
-            {creating ? <Loader2 className="animate-spin" /> : <Plus size={20} />}
-            Authorize New Profile
+            {creating ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+            Create Role
           </button>
         }
       >
-        <form id="roleForm" onSubmit={handleCreateRole} className="p-10 space-y-10">
-          <FormField label="Role Terminal Identifier" required>
+        <form id="roleForm" onSubmit={handleCreateRole} className="p-6 space-y-6">
+          <FormField label="Role Name" required>
             <Input 
               required
-              placeholder="e.g. Senior Inventory Clerk"
-              className="font-black text-lg"
+              placeholder="e.g. Lead Assistant"
+              className="font-bold text-base"
               value={newRoleData.name}
               onChange={(e) => setNewRoleData({...newRoleData, name: e.target.value.toUpperCase()})}
             />
           </FormField>
           
-          <FormField label="Functional Scope Map">
+          <FormField label="Description">
             <Textarea 
               rows={3}
-              placeholder="Describe the operational responsibilities..."
+              placeholder="e.g. Manages store inventory operations under direct supervision."
               value={newRoleData.description}
               onChange={(e) => setNewRoleData({...newRoleData, description: e.target.value})}
+            />
+          </FormField>
+        </form>
+      </Modal>
+
+      {/* Edit Role Details Modal */}
+      <Modal
+        isOpen={showEditRoleModal}
+        onClose={() => setShowEditRoleModal(false)}
+        title={
+          <div className="flex flex-col gap-1">
+            <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">Edit Custom Role</h2>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Update role name and description</p>
+          </div>
+        }
+        maxWidth="max-w-md"
+        footer={
+          <button 
+            type="submit"
+            form="editRoleForm"
+            disabled={updatingRole}
+            className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-md shadow-blue-200 transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 text-xs"
+          >
+            {updatingRole ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+            Save Changes
+          </button>
+        }
+      >
+        <form id="editRoleForm" onSubmit={handleEditRoleDetails} className="p-6 space-y-6">
+          <FormField label="Role Name" required>
+            <Input 
+              required
+              placeholder="e.g. Lead Assistant"
+              className="font-bold text-base"
+              value={editRoleData.name}
+              onChange={(e) => setEditRoleData({...editRoleData, name: e.target.value.toUpperCase()})}
+            />
+          </FormField>
+          
+          <FormField label="Description">
+            <Textarea 
+              rows={3}
+              placeholder="e.g. Manages store inventory operations under direct supervision."
+              value={editRoleData.description}
+              onChange={(e) => setEditRoleData({...editRoleData, description: e.target.value})}
             />
           </FormField>
         </form>

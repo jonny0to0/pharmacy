@@ -175,12 +175,12 @@ router.post("/tax-billing", authenticateToken, requirePermission("SETTINGS_BUSIN
 router.post("/modules", authenticateToken, requirePermission("SETTINGS_BUSINESS.UPDATE"), async (req: Request, res: Response) => {
   try {
     const tenantId = req.user!.tenantId;
-    const { enableMedicalInfo } = req.body;
+    const { enableMedicalInfo, walkInCustomerBehavior, allowPharmacistCustomerCreation } = req.body;
 
     await prisma.tenantsettings.upsert({
       where: { tenantId },
-      update: { enableMedicalInfo },
-      create: { id: randomUUID(), tenantId, enableMedicalInfo }
+      update: { enableMedicalInfo, walkInCustomerBehavior, allowPharmacistCustomerCreation },
+      create: { id: randomUUID(), tenantId, enableMedicalInfo, walkInCustomerBehavior, allowPharmacistCustomerCreation }
     });
 
     res.json({ message: "Module settings updated successfully" });

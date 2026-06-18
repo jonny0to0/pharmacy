@@ -61,7 +61,7 @@ export default function Layout() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-auto relative z-10 custom-scrollbar">
+        <div className="flex-1 overflow-auto relative custom-scrollbar">
           <div className="max-w-[1600px] mx-auto p-6 lg:p-10 h-full">
             <ErrorBoundary>
               <Outlet />

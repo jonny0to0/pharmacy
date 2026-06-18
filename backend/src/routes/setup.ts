@@ -5,6 +5,7 @@ import { randomUUID } from "crypto";
 import { authenticateToken } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import { businessProfileSchema, taxSettingsSchema } from "../validators/schemas.js";
+import { sendInvitationEmail } from "../services/email.service.js";
 
 const router = express.Router();
 
@@ -39,6 +40,8 @@ router.post("/complete-batch", async (req: Request, res: Response): Promise<any>
   };
 
   const mappedBusinessType = typeMapping[businessType] || 'PHARMACY';
+
+  const invitationsToSend: { email: string; name: string; token: string }[] = [];
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -109,7 +112,7 @@ router.post("/complete-batch", async (req: Request, res: Response): Promise<any>
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(users.password, salt);
         await tx.user.update({
-          where: { id: req.user?.userId },
+          where: { id: req.user!.userId },
           data: { password: hashedPassword }
         });
       }
@@ -121,15 +124,24 @@ router.post("/complete-batch", async (req: Request, res: Response): Promise<any>
 
         for (const staff of users.staff) {
           const staffRoleName = staff.role.toUpperCase();
+          const inviteToken = randomUUID();
+          const inviteTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+          const email = `${staff.name.toLowerCase().replace(/\s/g, "")}@${businessInfo.name.toLowerCase().replace(/\s/g, "")}.com`;
           
           const newUser = await tx.user.create({
             data: {
+              id: randomUUID(),
               name: staff.name,
-              email: `${staff.name.toLowerCase().replace(/\s/g, "")}@${businessInfo.name.toLowerCase().replace(/\s/g, "")}.com`,
+              email,
               mobile: `${Math.floor(Math.random() * 9000000000) + 1000000000}`,
               password: defaultStaffPassword,
               role: staffRoleName as any,
-              tenantId
+              status: "PENDING",
+              isInvited: true,
+              tenantId,
+              inviteToken,
+              inviteTokenExpires,
+              updatedAt: new Date()
             }
           });
 
@@ -144,11 +156,16 @@ router.post("/complete-batch", async (req: Request, res: Response): Promise<any>
           if (roleToAssign) {
             await tx.userrole.create({
               data: {
+                id: randomUUID(),
                 userId: newUser.id,
                 roleId: roleToAssign.id
               }
             });
+          } else {
+            console.warn(`[Setup Batch] Role ${staffRoleName} not found in DB!`);
           }
+
+          invitationsToSend.push({ email, name: staff.name, token: inviteToken });
         }
       }
 
@@ -159,6 +176,15 @@ router.post("/complete-batch", async (req: Request, res: Response): Promise<any>
         create: { id: randomUUID(), tenantId, businessProfileCompleted: true, taxCompleted: true, invoiceCompleted: true }
       });
     });
+
+    // Send emails after transaction succeeds
+    for (const invite of invitationsToSend) {
+      try {
+        await sendInvitationEmail(invite.email, invite.name, invite.token, businessInfo.name || "Your Pharmacy");
+      } catch (emailError) {
+        console.error(`[Setup Complete Batch] Failed to send email to ${invite.email}:`, emailError);
+      }
+    }
 
     res.json({ success: true, message: "Workspace initialized successfully" });
   } catch (error: any) {

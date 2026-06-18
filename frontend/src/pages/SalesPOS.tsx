@@ -14,6 +14,7 @@ import ProductWorkspace from '../components/POS/ProductWorkspace';
 import BillingPanel from '../components/POS/BillingPanel';
 import MedicalInfoDrawer from '../components/POS/MedicalInfoDrawer';
 import CustomerModal from '../components/CustomerModal';
+import CustomerSelectionModal from '../components/CustomerSelectionModal';
 import DraftRestorationModal from '../components/DraftRestorationModal';
 import SaleSuccessScreen from '../components/POS/SaleSuccessScreen';
 import toast from 'react-hot-toast';
@@ -21,7 +22,8 @@ import alerts from '../utils/alerts';
 
 const SalesPOS = () => {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-  const [showCustomerModal, setShowCustomerModal] = useState(false);
+  const [showSelectionModal, setShowSelectionModal] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [infoDrawerOpen, setInfoDrawerOpen] = useState(false);
   const [selectedInfoProduct, setSelectedInfoProduct] = useState<Product | null>(null);
   const [enableMedicalInfo, setEnableMedicalInfo] = useState(false);
@@ -184,19 +186,29 @@ const SalesPOS = () => {
       {/* 3. Billing Panel (Right) */}
       <BillingPanel 
         onCheckout={handleCheckout} 
-        onCustomerSelect={() => setShowCustomerModal(true)}
+        onCustomerSelect={() => setShowSelectionModal(true)}
         isLoading={checkoutMutation.isPending}
       />
 
       {/* Modals & Drawers */}
+      <CustomerSelectionModal
+        isOpen={showSelectionModal}
+        onClose={() => setShowSelectionModal(false)}
+        onSelect={(selectedCustomer) => setCustomer(selectedCustomer)}
+        onRegisterNew={() => {
+          setShowSelectionModal(false);
+          setShowRegisterModal(true);
+        }}
+      />
+
       <CustomerModal 
-        isOpen={showCustomerModal}
-        onClose={() => setShowCustomerModal(false)}
+        isOpen={showRegisterModal}
+        onClose={() => setShowRegisterModal(false)}
         onSave={async (customerInput) => {
           const res = await api.post('/customers', customerInput);
-          queryClient.invalidateQueries({ queryKey: ['customers'] });
+          queryClient.invalidateQueries({ queryKey: ['customers-selection'] });
           setCustomer(res.data.data);
-          setShowCustomerModal(false);
+          setShowRegisterModal(false);
         }}
       />
 

@@ -6,12 +6,13 @@ import { authenticateToken } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/permission.middleware.js";
 import { createAuditLog } from "../services/auditService.js";
 import { sendInvitationEmail } from "../services/email.service.js";
+import { cacheService } from "../services/cache.service.js";
 const router = express.Router();
 
 // Get All Staff for Tenant
 router.get("/staff", authenticateToken, requirePermission("STAFF.READ"), async (req: Request, res: Response) => {
   try {
-    const tenantId = req.user!.tenantId;
+    const tenantId = req.user!.tenantId as string;
     if (!tenantId) return res.status(400).json({ error: "Tenant ID required" });
 
     const staff = await prisma.user.findMany({
@@ -25,6 +26,11 @@ router.get("/staff", authenticateToken, requirePermission("STAFF.READ"), async (
             role: true
           }
         },
+        userbranch: {
+          include: {
+            branch: true
+          }
+        },
         user_user_reportingManagerIdTouser: true
       }
     });
@@ -32,6 +38,8 @@ router.get("/staff", authenticateToken, requirePermission("STAFF.READ"), async (
     const formattedStaff = staff.map(u => ({
       ...u,
       role: u.userrole.map(ur => ur.role.name).join(", "),
+      branches: u.userbranch.map(ub => ub.branch),
+      branchNames: u.userbranch.map(ub => ub.branch.name).join(", ") || "All Branches",
       reportingManagerName: u.user_user_reportingManagerIdTouser?.name
     }));
 
@@ -44,7 +52,7 @@ router.get("/staff", authenticateToken, requirePermission("STAFF.READ"), async (
 // Add New Staff
 router.post("/staff", authenticateToken, requirePermission("STAFF.CREATE"), async (req: Request, res: Response) => {
   try {
-    const tenantId = req.user!.tenantId;
+    const tenantId = req.user!.tenantId as string;
     if (!tenantId) return res.status(400).json({ error: "Tenant ID required" });
 
     const { 
@@ -68,13 +76,15 @@ router.post("/staff", authenticateToken, requirePermission("STAFF.CREATE"), asyn
 
     const roleToAssign = await prisma.role.findFirst({
       where: { 
-        name: role.toUpperCase(),
+        name: {
+          in: [role, role.toUpperCase(), role.toLowerCase()]
+        },
         OR: [{ tenantId }, { tenantId: null, isSystem: true }]
       }
     });
 
     if (!roleToAssign) {
-      console.log("[DEBUG] Validation failed: Role not found in DB", { role: role.toUpperCase(), tenantId });
+      console.log("[DEBUG] Validation failed: Role not found in DB", { role, tenantId });
       return res.status(400).json({ error: "Invalid role selected" });
     }
 
@@ -82,10 +92,11 @@ router.post("/staff", authenticateToken, requirePermission("STAFF.CREATE"), asyn
 
     const newUser = await prisma.user.create({
       data: {
+        id: uuidv4(),
         name,
         email,
         mobile,
-        role: role.toUpperCase() as any,
+        role: role.toUpperCase(),
         status: "PENDING",
         isInvited: true,
         tenantId,
@@ -96,25 +107,48 @@ router.post("/staff", authenticateToken, requirePermission("STAFF.CREATE"), asyn
         joinDate: joinDate ? new Date(joinDate) : new Date(),
         salary: salary ? parseFloat(salary) : null,
         workShift,
-        reportingManagerId,
+        reportingManagerId: reportingManagerId || null,
         createdById: req.user!.userId,
         inviteToken,
         inviteTokenExpires,
+        updatedAt: new Date(),
         userrole: {
           create: {
+            id: uuidv4(),
             roleId: roleToAssign.id
           }
         }
       }
     });
 
+    // Assign Branches
+    let assignedBranchIds: string[] = [];
+    if (Array.isArray(req.body.branchIds)) {
+      assignedBranchIds = req.body.branchIds;
+    } else if (typeof req.body.branchId === "string" && req.body.branchId) {
+      assignedBranchIds = [req.body.branchId];
+    }
+
+    if (assignedBranchIds.length > 0) {
+      await prisma.userbranch.createMany({
+        data: assignedBranchIds.map(bId => ({
+          id: uuidv4(),
+          userId: newUser.id,
+          branchId: bId
+        }))
+      });
+    }
+
     // Send Invitation Email
+    let emailSent = true;
     try {
       await sendInvitationEmail(email, name, inviteToken, tenant?.businessName || "Your Pharmacy");
     } catch (emailError) {
       console.error("[Staff Creation] Failed to send invitation email:", emailError);
-      // We don't fail the whole request but log it
+      emailSent = false;
     }
+
+    const inviteUrl = `${process.env.FRONTEND_URL || "http://localhost:5173"}/setup-account?token=${inviteToken}`;
 
     // Production-Grade: Audit Logging
     await createAuditLog(req.user!.userId, "STAFF", "CREATE", newUser.id, {
@@ -125,7 +159,11 @@ router.post("/staff", authenticateToken, requirePermission("STAFF.CREATE"), asyn
 
     res.json({ 
       success: true, 
-      message: "Staff invited successfully. An email has been sent to set up their account.",
+      message: emailSent
+        ? "Staff invited successfully. An email has been sent to set up their account."
+        : "Staff created successfully, but email invitation could not be sent (SMTP error). Copy the invitation link below.",
+      emailSent,
+      inviteLink: inviteUrl,
       staff: {
         id: newUser.id,
         name: newUser.name,
@@ -147,8 +185,8 @@ router.post("/staff", authenticateToken, requirePermission("STAFF.CREATE"), asyn
 // Update Staff
 router.put("/staff/:id", authenticateToken, requirePermission("STAFF.UPDATE"), async (req: Request, res: Response) => {
   try {
-    const tenantId = req.user!.tenantId;
-    const { id } = req.params;
+    const tenantId = req.user!.tenantId as string;
+    const id = req.params.id as string;
     const { 
       name, email, mobile, role, isActive,
       employeeId, department, designation,
@@ -166,40 +204,80 @@ router.put("/staff/:id", authenticateToken, requirePermission("STAFF.UPDATE"), a
     if (role) {
       const roleToAssign = await prisma.role.findFirst({
         where: { 
-          name: role.toUpperCase(),
+          name: {
+            in: [role, role.toUpperCase(), role.toLowerCase()]
+          },
           OR: [{ tenantId }, { tenantId: null, isSystem: true }]
         }
       });
-      if (roleToAssign) roleToAssignId = roleToAssign.id;
+      if (!roleToAssign) {
+        return res.status(400).json({ error: "Invalid role selected" });
+      }
+      roleToAssignId = roleToAssign.id;
+    }
+
+    const updateData: any = {
+      name,
+      email,
+      mobile,
+      isActive,
+      employeeId: employeeId || null,
+      department: department || null,
+      designation: designation || null,
+      employmentType: employmentType || 'FULL_TIME',
+      salary: (salary !== "" && salary !== null && salary !== undefined) ? parseFloat(salary) : null,
+      workShift: workShift || null,
+      reportingManagerId: reportingManagerId || null,
+      updatedAt: new Date()
+    };
+
+    if (joinDate) {
+      updateData.joinDate = new Date(joinDate);
+    }
+    if (role) {
+      updateData.role = role.toUpperCase();
+    }
+    if (roleToAssignId) {
+      updateData.userrole = {
+        deleteMany: {},
+        create: {
+          id: uuidv4(),
+          roleId: roleToAssignId
+        }
+      };
     }
 
     const updated = await prisma.user.update({
       where: { id },
-      data: { 
-        name, 
-        email, 
-        mobile, 
-        isActive,
-        employeeId,
-        department,
-        designation,
-        employmentType: employmentType || 'FULL_TIME',
-        joinDate: joinDate ? new Date(joinDate) : undefined,
-        salary: (salary !== "" && salary !== null && salary !== undefined) ? parseFloat(salary) : null,
-        workShift,
-        role: role ? (role.toUpperCase() as any) : undefined,
-        reportingManagerId: reportingManagerId || null,
-        ...(roleToAssignId && {
-          userrole: {
-            deleteMany: {},
-            create: { roleId: roleToAssignId }
-          }
-        })
-      },
+      data: updateData,
       include: {
         userrole: { include: { role: true } }
       }
     });
+
+    // Update Branches
+    let assignedBranchIds: string[] = [];
+    if (Array.isArray(req.body.branchIds)) {
+      assignedBranchIds = req.body.branchIds;
+    } else if (typeof req.body.branchId === "string" && req.body.branchId) {
+      assignedBranchIds = [req.body.branchId];
+    }
+
+    if (req.body.branchId !== undefined || req.body.branchIds !== undefined) {
+      await prisma.userbranch.deleteMany({ where: { userId: id } });
+      if (assignedBranchIds.length > 0) {
+        await prisma.userbranch.createMany({
+          data: assignedBranchIds.map(bId => ({
+            id: uuidv4(),
+            userId: id,
+            branchId: bId
+          }))
+        });
+      }
+    }
+
+    // Invalidate user permissions cache
+    await cacheService.delete(`user_perms:${id}`);
 
     // Production-Grade: Audit Logging
     await createAuditLog(req.user!.userId, "STAFF", "UPDATE", updated.id, {
@@ -220,7 +298,11 @@ router.put("/staff/:id", authenticateToken, requirePermission("STAFF.UPDATE"), a
     });
   } catch (error: any) {
     if (error.code === 'P2002') {
-      const field = error.meta?.target || "Field";
+      const target = error.meta?.target || "";
+      let field = "Field";
+      if (target.includes("email")) field = "Email";
+      else if (target.includes("mobile")) field = "Mobile number";
+      else if (target.includes("employeeId")) field = "Employee ID";
       return res.status(400).json({ error: `${field} already exists` });
     }
     console.error("[Staff Update Error]:", error);
@@ -231,8 +313,8 @@ router.put("/staff/:id", authenticateToken, requirePermission("STAFF.UPDATE"), a
 // Delete Staff
 router.delete("/staff/:id", authenticateToken, requirePermission("STAFF.DELETE"), async (req: Request, res: Response) => {
   try {
-    const tenantId = req.user!.tenantId;
-    const { id } = req.params;
+    const tenantId = req.user!.tenantId as string;
+    const id = req.params.id as string;
 
     const staff = await prisma.user.findFirst({
       where: { id, tenantId }
@@ -260,8 +342,8 @@ router.delete("/staff/:id", authenticateToken, requirePermission("STAFF.DELETE")
 // Resend Invitation
 router.post("/staff/:id/resend-invite", authenticateToken, requirePermission("STAFF.CREATE"), async (req: Request, res: Response): Promise<any> => {
   try {
-    const tenantId = req.user!.tenantId;
-    const { id } = req.params;
+    const tenantId = req.user!.tenantId as string;
+    const id = req.params.id as string;
 
     const staff = await prisma.user.findFirst({
       where: { id, tenantId, status: "PENDING" },
@@ -276,15 +358,102 @@ router.post("/staff/:id/resend-invite", authenticateToken, requirePermission("ST
 
     await prisma.user.update({
       where: { id: staff.id },
-      data: { inviteToken, inviteTokenExpires }
+      data: { 
+        inviteToken, 
+        inviteTokenExpires,
+        isInvited: true,
+        updatedAt: new Date()
+      }
     });
 
-    await sendInvitationEmail(staff.email, staff.name, inviteToken, staff.tenant?.businessName || "Your Pharmacy");
+    let emailSent = true;
+    try {
+      await sendInvitationEmail(staff.email, staff.name, inviteToken, staff.tenant?.businessName || "Your Pharmacy");
+    } catch (emailError) {
+      console.error("[Staff Resend Invitation] Failed to send invitation email:", emailError);
+      emailSent = false;
+    }
 
-    res.json({ message: "Invitation resent successfully" });
+    const inviteUrl = `${process.env.FRONTEND_URL || "http://localhost:5173"}/setup-account?token=${inviteToken}`;
+
+    res.json({ 
+      success: true,
+      message: emailSent 
+        ? "Invitation resent successfully" 
+        : "Invitation generated successfully. Copy the link below to set up the account.", 
+      inviteLink: inviteUrl,
+      emailSent 
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Failed to resend invitation" });
+  }
+});
+
+// Get direct permissions for a staff member
+router.get("/staff/:id/permissions", authenticateToken, requirePermission("ROLES.READ"), async (req: Request, res: Response) => {
+  try {
+    const tenantId = req.user!.tenantId;
+    const { id } = req.params;
+
+    // Verify user belongs to same tenant
+    const user = await prisma.user.findFirst({
+      where: { id, tenantId }
+    });
+    if (!user) return res.status(404).json({ error: "Staff member not found" });
+
+    const directPermissions = await prisma.userpermission.findMany({
+      where: { userId: id },
+      include: { permission: true }
+    });
+
+    res.json(directPermissions.map(dp => dp.permissionId));
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch user permissions" });
+  }
+});
+
+// Update direct permissions for a staff member
+router.put("/staff/:id/permissions", authenticateToken, requirePermission("ROLES.UPDATE"), async (req: Request, res: Response) => {
+  try {
+    const tenantId = req.user!.tenantId;
+    const { id } = req.params;
+    const { permissionIds } = req.body; // array of permission IDs
+
+    if (!Array.isArray(permissionIds)) {
+      return res.status(400).json({ error: "permissionIds must be an array" });
+    }
+
+    // Verify user belongs to same tenant
+    const user = await prisma.user.findFirst({
+      where: { id, tenantId }
+    });
+    if (!user) return res.status(404).json({ error: "Staff member not found" });
+
+    await prisma.$transaction([
+      prisma.userpermission.deleteMany({ where: { userId: id } }),
+      prisma.userpermission.createMany({
+        data: permissionIds.map(pId => ({
+          id: uuidv4(),
+          userId: id,
+          permissionId: pId
+        }))
+      })
+    ]);
+
+    // Invalidate user permissions cache
+    await cacheService.delete(`user_perms:${id}`);
+
+    // Audit Log
+    await createAuditLog(req.user!.userId, "STAFF", "UPDATE_PERMISSIONS", id, {
+      staffName: user.name,
+      permissionIds
+    });
+
+    res.json({ message: "Direct permissions updated successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to update user permissions" });
   }
 });
 

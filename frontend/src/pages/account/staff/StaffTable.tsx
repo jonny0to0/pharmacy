@@ -134,8 +134,28 @@ const StaffTable: React.FC<StaffTableProps> = ({ staff, onEdit, onDelete, hasPer
                         onClick={async () => {
                           setResendingId(member.id);
                           try {
-                            await api.post(`/users/staff/${member.id}/resend-invite`);
-                            toast.success(`Invitation resent to ${member.name}`);
+                            const { data } = await api.post(`/users/staff/${member.id}/resend-invite`);
+                            if (data && data.emailSent === false && data.inviteLink) {
+                              import('sweetalert2').then((Swal) => {
+                                Swal.default.fire({
+                                  title: 'Email Delivery Failed',
+                                  html: `
+                                    <p class="text-sm text-slate-500 mb-4">The invitation was regenerated, but the email could not be sent (SMTP config issue).</p>
+                                    <p class="text-sm font-bold text-slate-700">Copy this activation link to configure the account:</p>
+                                    <textarea readonly class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-mono mt-2 h-20 outline-none resize-none">${data.inviteLink}</textarea>
+                                  `,
+                                  icon: 'warning',
+                                  confirmButtonText: 'Copy Link',
+                                  confirmButtonColor: '#3085d6',
+                                  preConfirm: () => {
+                                    navigator.clipboard.writeText(data.inviteLink);
+                                    toast.success('Link copied to clipboard!');
+                                  }
+                                });
+                              });
+                            } else {
+                              toast.success(`Invitation resent to ${member.name}`);
+                            }
                           } catch (err: any) {
                             toast.error(err.response?.data?.error || 'Failed to resend invitation');
                           } finally {

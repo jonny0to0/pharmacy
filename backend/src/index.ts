@@ -34,6 +34,7 @@ import auditLogRoutes from "./routes/auditLog.js";
 import attendanceRoutes from "./routes/attendance.js";
 import leaveRoutes from "./routes/leaves.js";
 import documentRoutes from "./routes/documents.js";
+import branchRoutes from "./routes/branches.js";
 
 // Super Admin Routes
 import adminBusinessRoutes from "./routes/admin/businesses.js";
@@ -105,8 +106,25 @@ app.use(correlationMiddleware);
 const SECURITY_MODE = process.env.SECURITY_MODE || "balanced";
 console.log(`🛡️ [SYSTEM] Security Engine initialized in ${SECURITY_MODE} mode.`);
 
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://localhost:5175",
+  "http://localhost:3000",
+  "http://localhost:3001",
+];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:5173",
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    const isLocalhost = /^http:\/\/localhost(:\d+)?$/.test(origin);
+    const isEnvOrigin = origin === process.env.FRONTEND_URL;
+    if (isLocalhost || isEnvOrigin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
 }));
 app.use(cookieParser());
@@ -142,6 +160,7 @@ app.use("/api/v1/audit-logs", auditLogRoutes);
 app.use("/api/v1/attendance", attendanceRoutes);
 app.use("/api/v1/leaves", leaveRoutes);
 app.use("/api/v1/documents", documentRoutes);
+app.use("/api/v1/branches", branchRoutes);
 
 // Super Admin Routes
 app.use("/api/v1/admin", authenticateToken, adminLogger);

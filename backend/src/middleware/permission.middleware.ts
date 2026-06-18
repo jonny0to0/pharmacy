@@ -17,7 +17,7 @@ export const requirePermission = (permission: string) => {
       let permissions = await cacheService.get<string[]>(cacheKey);
 
       if (!permissions) {
-        // 2. Fetch from DB with flattened permissions
+        // 2. Fetch from DB with flattened permissions (roles + direct permissions)
         const userWithRoles = await prisma.user.findUnique({
           where: { id: userId },
           include: {
@@ -33,6 +33,11 @@ export const requirePermission = (permission: string) => {
                   }
                 }
               }
+            },
+            userpermission: {
+              include: {
+                permission: true
+              }
             }
           }
         });
@@ -41,9 +46,13 @@ export const requirePermission = (permission: string) => {
           return res.status(401).json({ error: "User not found" });
         }
 
-        permissions = userWithRoles.userrole.flatMap(ur => 
+        const rolePerms = userWithRoles.userrole.flatMap(ur => 
           ur.role.rolepermission.map(rp => rp.permission.name)
         );
+
+        const directPerms = userWithRoles.userpermission.map(up => up.permission.name);
+
+        permissions = [...new Set([...rolePerms, ...directPerms])];
 
         // Store in Cache (TTL 10 mins)
         await cacheService.set(cacheKey, permissions, 600);

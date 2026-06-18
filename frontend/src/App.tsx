@@ -3,6 +3,8 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import Layout from './components/Layout';
 import { useAuth } from './context/AuthContext';
 import { SidebarProvider } from './context/SidebarContext';
+import AccessDenied from './components/AccessDenied';
+import { usePermission } from './hooks/usePermission';
 
 // Pages
 import Dashboard from './pages/Dashboard';
@@ -92,6 +94,20 @@ function ProtectedRoute({ children, requireSetup = true }: { children: React.Rea
   return <>{children}</>;
 }
 
+function PermissionRoute({ children, permission, module }: { children: React.ReactNode, permission?: string, module?: string }) {
+  const { hasPermission, hasModuleAccess } = usePermission();
+
+  if (permission && !hasPermission(permission)) {
+    return <AccessDenied />;
+  }
+
+  if (module && !hasModuleAccess(module)) {
+    return <AccessDenied />;
+  }
+
+  return <>{children}</>;
+}
+
 function RoleBasedHome() {
   const { user } = useAuth();
   
@@ -109,6 +125,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/setup-account" element={<SetupPassword />} />
+        <Route path="/unauthorized" element={<AccessDenied />} />
         
         {/* Setup Route */}
         <Route path="/setup" element={
@@ -120,16 +137,16 @@ function App() {
         {/* Main App Routes */}
         <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route path="/" element={<RoleBasedHome />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/sales" element={<SalesPOS />} />
-          <Route path="/purchases" element={<Purchases />} />
-          <Route path="/payments" element={<Payments />} />
-          <Route path="/expenses" element={<Expenses />} />
-          <Route path="/products" element={<Products />} />
+          <Route path="/dashboard" element={<PermissionRoute permission="DASHBOARD.READ"><Dashboard /></PermissionRoute>} />
+          <Route path="/sales" element={<PermissionRoute module="SALES"><SalesPOS /></PermissionRoute>} />
+          <Route path="/purchases" element={<PermissionRoute module="PURCHASES"><Purchases /></PermissionRoute>} />
+          <Route path="/payments" element={<PermissionRoute module="PAYMENTS"><Payments /></PermissionRoute>} />
+          <Route path="/expenses" element={<PermissionRoute module="EXPENSES"><Expenses /></PermissionRoute>} />
+          <Route path="/products" element={<PermissionRoute module="PRODUCTS"><Products /></PermissionRoute>} />
           {/* We'll handle business-specific sub-routes here if needed, or inside the components */}
-          <Route path="/customers" element={<Customers />} />
-          <Route path="/suppliers" element={<Suppliers />} />
-          <Route path="/reports" element={<Reports />} />
+          <Route path="/customers" element={<PermissionRoute module="CUSTOMERS"><Customers /></PermissionRoute>} />
+          <Route path="/suppliers" element={<PermissionRoute module="SUPPLIERS"><Suppliers /></PermissionRoute>} />
+          <Route path="/reports" element={<PermissionRoute module="REPORTS"><Reports /></PermissionRoute>} />
           <Route path="/settings" element={<Navigate to="/account/overview" replace />} />
           
           {/* New Account Section */}
@@ -141,8 +158,8 @@ function App() {
             <Route path="compliance" element={<Compliance />} />
             <Route path="address" element={<BusinessAddress />} />
             <Route path="billing" element={<BillingSettings />} />
-            <Route path="staff" element={<StaffManagement />} />
-            <Route path="roles" element={<RoleManagement />} />
+            <Route path="staff" element={<PermissionRoute permission="STAFF.READ"><StaffManagement /></PermissionRoute>} />
+            <Route path="roles" element={<PermissionRoute permission="ROLES.READ"><RoleManagement /></PermissionRoute>} />
             <Route path="security" element={<SecuritySettings />} />
             <Route path="subscription" element={<SubscriptionPlan />} />
             <Route path="notifications" element={<Notifications />} />

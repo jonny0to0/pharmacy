@@ -4,6 +4,7 @@ import { authenticateToken } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/permission.middleware.js";
 import { auditLog } from "../middleware/audit.middleware.js";
 import { cacheService } from "../services/cache.service.js";
+import { randomUUID } from "crypto";
 
 const router = express.Router();
 
@@ -43,19 +44,22 @@ router.get("/", authenticateToken, requirePermission("ROLES.READ"), async (req: 
 // Create a new custom role
 router.post("/", authenticateToken, requirePermission("ROLES.CREATE"), auditLog("CREATE_ROLE", "ROLES"), async (req: Request, res: Response) => {
   try {
-    const { name, description, permissionIds } = req.body;
+    const { name, description, permissionIds = [] } = req.body;
     const tenantId = req.user!.tenantId;
 
     if (!tenantId) return res.status(400).json({ error: "Tenant ID required" });
 
     const role = await prisma.role.create({
       data: {
+        id: randomUUID(),
         name,
         description,
         tenantId,
         isSystem: false,
+        updatedAt: new Date(),
         rolepermission: {
           create: permissionIds.map((pId: string) => ({
+            id: randomUUID(),
             permissionId: pId
           }))
         }
@@ -64,12 +68,13 @@ router.post("/", authenticateToken, requirePermission("ROLES.CREATE"), auditLog(
 
     res.json(role);
   } catch (error) {
+    console.error("Role creation error:", error);
     res.status(500).json({ error: "Failed to create role" });
   }
 });
 
 // Update role permissions
-router.patch("/:id/permissions", authenticateToken, requirePermission("ROLES.UPDATE"), auditLog("UPDATE_ROLE_PERMISSIONS", "ROLES"), async (req: Request, res: Response) => {
+const updatePermissions = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { permissionIds } = req.body;
@@ -89,6 +94,7 @@ router.patch("/:id/permissions", authenticateToken, requirePermission("ROLES.UPD
       prisma.rolepermission.deleteMany({ where: { roleId: id } }),
       prisma.rolepermission.createMany({
         data: permissionIds.map((pId: string) => ({
+          id: randomUUID(),
           roleId: id,
           permissionId: pId
         }))
@@ -110,7 +116,10 @@ router.patch("/:id/permissions", authenticateToken, requirePermission("ROLES.UPD
     console.error(error);
     res.status(500).json({ error: "Failed to update permissions" });
   }
-});
+};
+
+router.patch("/:id/permissions", authenticateToken, requirePermission("ROLES.UPDATE"), auditLog("UPDATE_ROLE_PERMISSIONS", "ROLES"), updatePermissions);
+router.put("/:id/permissions", authenticateToken, requirePermission("ROLES.UPDATE"), auditLog("UPDATE_ROLE_PERMISSIONS", "ROLES"), updatePermissions);
 
 // Get all available permissions grouped by module
 router.get("/permissions", authenticateToken, requirePermission("ROLES.READ"), async (req: Request, res: Response) => {
@@ -130,6 +139,84 @@ router.get("/permissions", authenticateToken, requirePermission("ROLES.READ"), a
     res.json(mappedModules);
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch permissions" });
+  }
+});
+
+// Update custom role details (name and description)
+router.put("/:id", authenticateToken, requirePermission("ROLES.UPDATE"), auditLog("UPDATE_ROLE", "ROLES"), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { name, description } = req.body;
+    const tenantId = req.user!.tenantId;
+
+    const role = await prisma.role.findFirst({
+      where: { id, tenantId, isSystem: false }
+    });
+
+    if (!role) return res.status(404).json({ error: "Custom role not found" });
+
+    if (!name) return res.status(400).json({ error: "Role name is required" });
+
+    // Check if name is changed and if new name is already taken for this tenant
+    if (name.toUpperCase() !== role.name.toUpperCase()) {
+      const existing = await prisma.role.findFirst({
+        where: {
+          name: name.toUpperCase(),
+          tenantId
+        }
+      });
+      if (existing) {
+        return res.status(400).json({ error: "A custom role with this name already exists" });
+      }
+    }
+
+    const updated = await prisma.role.update({
+      where: { id },
+      data: {
+        name: name.toUpperCase(),
+        description,
+        updatedAt: new Date()
+      }
+    });
+
+    res.json(updated);
+  } catch (error) {
+    console.error("Role update error:", error);
+    res.status(500).json({ error: "Failed to update role details" });
+  }
+});
+
+// Delete a custom role
+router.delete("/:id", authenticateToken, requirePermission("ROLES.DELETE"), auditLog("DELETE_ROLE", "ROLES"), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const tenantId = req.user!.tenantId;
+
+    const role = await prisma.role.findFirst({
+      where: { id, tenantId, isSystem: false }
+    });
+
+    if (!role) return res.status(404).json({ error: "Custom role not found" });
+
+    // Check if there are users currently assigned to this role
+    const usersWithRole = await prisma.userrole.count({
+      where: { roleId: id }
+    });
+
+    if (usersWithRole > 0) {
+      return res.status(400).json({ error: "Cannot delete role. There are users currently assigned to this role." });
+    }
+
+    // Delete role-permissions and the role in a transaction
+    await prisma.$transaction([
+      prisma.rolepermission.deleteMany({ where: { roleId: id } }),
+      prisma.role.delete({ where: { id } })
+    ]);
+
+    res.json({ message: "Role deleted successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to delete role" });
   }
 });
 

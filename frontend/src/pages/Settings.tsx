@@ -66,12 +66,15 @@ const Settings = () => {
 
   // Modules state
   const [enableMedicalInfo, setEnableMedicalInfo] = useState(false);
+  const [walkInBehavior, setWalkInBehavior] = useState('OPTION_A');
+  const [allowPharmacistRegister, setAllowPharmacistRegister] = useState(false);
 
   const settingsData = {
     businessName, businessType, mobile, email, website, address, state, pincode,
     gstin, pan, isComposition, compositionRate, defaultGstRate,
     invoicePrefix, invoiceStartNo, termsConditions, showShippingAddress, defaultDueDays,
-    lowStockAlert, paymentReminders, dailySummary, enableMedicalInfo
+    lowStockAlert, paymentReminders, dailySummary, enableMedicalInfo,
+    walkInBehavior, allowPharmacistRegister
   };
 
   // Draft Preservation Hook
@@ -103,6 +106,8 @@ const Settings = () => {
         setPaymentReminders(data.paymentReminders);
         setDailySummary(data.dailySummary);
         setEnableMedicalInfo(data.enableMedicalInfo);
+        setWalkInBehavior(data.walkInBehavior || 'OPTION_A');
+        setAllowPharmacistRegister(!!data.allowPharmacistRegister);
         toast.success('Unsaved settings restored', { id: 'settings-draft' });
       }
     }
@@ -134,6 +139,8 @@ const Settings = () => {
           
           if (p.tenant?.settings) {
             setEnableMedicalInfo(!!p.tenant.settings.enableMedicalInfo);
+            setWalkInBehavior(p.tenant.settings.walkInCustomerBehavior || 'OPTION_A');
+            setAllowPharmacistRegister(!!p.tenant.settings.allowPharmacistCustomerCreation);
           }
         }
       } catch (err) {
@@ -154,7 +161,9 @@ const Settings = () => {
 
       // Save Modules
       await api.post('/settings/modules', {
-        enableMedicalInfo
+        enableMedicalInfo,
+        walkInCustomerBehavior: walkInBehavior,
+        allowPharmacistCustomerCreation: allowPharmacistRegister
       });
 
       toast.success('Settings saved successfully!');
@@ -401,7 +410,37 @@ const Settings = () => {
         </div>
         <button type="button" onClick={() => setEnableMedicalInfo(!enableMedicalInfo)}
           className={`relative w-14 h-7 rounded-full transition-colors cursor-pointer ${enableMedicalInfo ? 'bg-rose-600' : 'bg-slate-300'}`}>
-          <div className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow-md transition-all ${enableMedicalInfo ? 'left-8' : 'left-1'}`}></div>
+          <div className={`absolute top-1.5 w-5 h-5 rounded-full bg-white shadow-md transition-all ${enableMedicalInfo ? 'left-8' : 'left-1'}`}></div>
+        </button>
+      </div>
+
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6 bg-slate-50 border border-slate-100 rounded-2xl group hover:bg-white hover:shadow-md transition-all">
+        <div className="flex-1">
+          <p className="font-bold text-base text-slate-900">Walk-in Customer Flow</p>
+          <p className="text-xs font-medium text-slate-500 mt-1 uppercase tracking-wider">Point of Sale Mechanics</p>
+          <p className="text-sm font-medium text-slate-500 mt-2 leading-relaxed">
+            Configure POS behavior when selecting Walk-in Customers: Option A displays the search modal, Option B immediately attaches a generic customer profile.
+          </p>
+        </div>
+        <div className="w-full sm:w-64">
+          <Select value={walkInBehavior} onChange={e => setWalkInBehavior(e.target.value)}>
+            <option value="OPTION_A">Option A: Open Customer Selection Modal</option>
+            <option value="OPTION_B">Option B: Auto-attach predefined system customer</option>
+          </Select>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-4 p-6 bg-slate-50 border border-slate-100 rounded-2xl group hover:bg-white hover:shadow-md transition-all">
+        <div className="flex-1">
+          <p className="font-bold text-base text-slate-900">Pharmacist Customer Registration</p>
+          <p className="text-xs font-medium text-slate-500 mt-1 uppercase tracking-wider">Role Access Configurations</p>
+          <p className="text-sm font-medium text-slate-500 mt-2 leading-relaxed">
+            Permit employees under the Pharmacist profile to register new customers on the fly during point of sale transaction creation.
+          </p>
+        </div>
+        <button type="button" onClick={() => setAllowPharmacistRegister(!allowPharmacistRegister)}
+          className={`relative w-14 h-7 rounded-full transition-colors cursor-pointer ${allowPharmacistRegister ? 'bg-indigo-600' : 'bg-slate-300'}`}>
+          <div className={`absolute top-1.5 w-5 h-5 rounded-full bg-white shadow-md transition-all ${allowPharmacistRegister ? 'left-8' : 'left-1'}`}></div>
         </button>
       </div>
     </div>

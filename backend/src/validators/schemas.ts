@@ -132,7 +132,10 @@ export const customerSchema = z.object({
     state: z.string().optional(),
     customerType: z.enum(["regular", "wholesale"]).default("regular"),
     creditLimit: z.coerce.number().min(0).default(0),
-    creditDays: z.coerce.number().min(0).optional()
+    creditDays: z.coerce.number().min(0).optional(),
+    dob: z.string().optional().nullable().or(z.literal("")),
+    gender: z.string().optional().nullable().or(z.literal("")),
+    membershipType: z.enum(["Regular", "Premium", "Corporate"]).optional().default("Regular")
   })
 });
 

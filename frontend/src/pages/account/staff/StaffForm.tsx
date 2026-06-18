@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { User, X, Shield, Mail, Phone, Briefcase, Calendar, DollarSign, Clock, UserCheck } from 'lucide-react';
+import api from '../../../api/axios';
 import alerts from '../../../utils/alerts';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import DraftRestorationModal from '../../../components/DraftRestorationModal';
@@ -16,11 +17,14 @@ interface StaffFormProps {
 
 const StaffForm: React.FC<StaffFormProps> = ({ onClose, onSuccess, initialData, title, submitLabel, apiCall }) => {
   const [loading, setLoading] = useState(false);
+  const [roles, setRoles] = useState<any[]>([]);
+  const [branches, setBranches] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     name: initialData?.name || '',
     email: initialData?.email || '',
     mobile: initialData?.mobile || '',
     role: initialData?.role || 'CASHIER',
+    branchIds: initialData?.branches?.map((b: any) => b.id) || [],
     employeeId: initialData?.employeeId || '',
     department: initialData?.department || '',
     designation: initialData?.designation || '',
@@ -44,6 +48,23 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, onSuccess, initialData, 
     }
   );
 
+  // Fetch roles and branches
+  React.useEffect(() => {
+    const fetchRolesAndBranches = async () => {
+      try {
+        const [rolesRes, branchesRes] = await Promise.all([
+          api.get('/roles'),
+          api.get('/branches')
+        ]);
+        setRoles(rolesRes.data);
+        setBranches(branchesRes.data);
+      } catch (err) {
+        toast.error("Failed to load roles and branches data");
+      }
+    };
+    fetchRolesAndBranches();
+  }, []);
+
   // Auto-save draft when data changes
   React.useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -58,11 +79,32 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, onSuccess, initialData, 
 
     setLoading(true);
     try {
-      await apiCall(formData);
-      alerts.success('Success', `${title} successfully`);
+      const res = await apiCall(formData);
       clearDraft(); // Clear draft on success
       onSuccess();
       onClose();
+
+      if (res && res.emailSent === false && res.inviteLink) {
+        import('sweetalert2').then((Swal) => {
+          Swal.default.fire({
+            title: 'Staff Created',
+            html: `
+              <p class="text-sm text-slate-500 mb-4">The staff member was created, but the invitation email could not be sent (SMTP config issue).</p>
+              <p class="text-sm font-bold text-slate-700">Copy this activation link to configure the account:</p>
+              <textarea readonly class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-mono mt-2 h-20 outline-none resize-none">${res.inviteLink}</textarea>
+            `,
+            icon: 'warning',
+            confirmButtonText: 'Copy Link',
+            confirmButtonColor: '#3085d6',
+            preConfirm: () => {
+              navigator.clipboard.writeText(res.inviteLink);
+              toast.success('Link copied to clipboard!');
+            }
+          });
+        });
+      } else {
+        alerts.success('Success', `${title} successfully`);
+      }
     } catch (error: any) {
       alerts.friendlyError(error.response?.data?.error || `Something went wrong`);
     } finally {
@@ -141,11 +183,55 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, onSuccess, initialData, 
                       onChange={(e) => setFormData({...formData, role: e.target.value})}
                       className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3.5 pl-12 pr-6 text-sm font-bold text-slate-700 appearance-none focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all uppercase tracking-tight"
                     >
-                      <option value="CASHIER">Cashier</option>
-                      <option value="PHARMACIST">Pharmacist</option>
-                      <option value="MANAGER">Manager</option>
-                      <option value="BUSINESS_ADMIN">Admin</option>
+                      {roles.map((r) => (
+                        <option key={r.id} value={r.name}>{r.name}</option>
+                      ))}
+                      {roles.length === 0 && (
+                        <>
+                          <option value="CASHIER">Cashier</option>
+                          <option value="PHARMACIST">Pharmacist</option>
+                          <option value="MANAGER">Manager</option>
+                          <option value="BUSINESS_ADMIN">Admin</option>
+                        </>
+                      )}
                     </select>
+                  </div>
+                </div>
+
+                {/* Assigned Branches */}
+                <div className="flex flex-col gap-3 col-span-1 md:col-span-2 mt-4">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Assigned Branches</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                    {branches.map((b) => {
+                      const isChecked = formData.branchIds.includes(b.id);
+                      return (
+                        <label 
+                          key={b.id} 
+                          className={`flex items-center gap-3 p-4 bg-white rounded-xl border-2 cursor-pointer transition-all ${
+                            isChecked ? 'border-blue-600 shadow-md shadow-blue-50' : 'border-slate-100 hover:border-slate-200'
+                          }`}
+                        >
+                          <input 
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {
+                              const newIds = isChecked
+                                ? formData.branchIds.filter((id: string) => id !== b.id)
+                                : [...formData.branchIds, b.id];
+                              setFormData({ ...formData, branchIds: newIds });
+                            }}
+                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                          />
+                          <div className="text-left">
+                            <p className="text-xs font-black text-slate-700">{b.name}</p>
+                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Branch Node</p>
+                          </div>
+                        </label>
+                      );
+                    })}
+                    {branches.length === 0 && (
+                      <p className="text-xs font-bold text-slate-400 italic col-span-2">No branches configured. Assigning user to All Branches by default.</p>
+                    )}
                   </div>
                 </div>
               </div>

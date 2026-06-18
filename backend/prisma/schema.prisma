@@ -134,6 +134,9 @@ model customer {
   payment            payment[]
   saleinvoice        saleinvoice[]
   salesorder         salesorder[]
+  dob                DateTime?
+  gender             String?
+  membershipType     String?               @default("Regular")
 
   @@unique([phone, tenantId], map: "Customer_phone_tenantId_key")
   @@index([tenantId], map: "Customer_tenantId_fkey")
@@ -170,6 +173,7 @@ model expense {
   createdAt   DateTime            @default(now())
   updatedAt   DateTime
   tenantId    String
+  branchId    String?
   tenant      tenant              @relation(fields: [tenantId], references: [id], map: "Expense_tenantId_fkey")
 
   @@index([tenantId], map: "Expense_tenantId_fkey")
@@ -295,6 +299,7 @@ model payment {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime
   tenantId       String
+  branchId       String?
   customer       customer?     @relation(fields: [customerId], references: [id], map: "Payment_customerId_fkey")
   purchasebill   purchasebill? @relation(fields: [purchaseBillId], references: [id], map: "Payment_purchaseBillId_fkey")
   saleinvoice    saleinvoice?  @relation(fields: [saleInvoiceId], references: [id], map: "Payment_saleInvoiceId_fkey")
@@ -315,6 +320,7 @@ model permission {
   moduleId       String
   module         module           @relation(fields: [moduleId], references: [id], map: "Permission_moduleId_fkey")
   rolepermission rolepermission[]
+  userpermission userpermission[]
 
   @@index([moduleId], map: "Permission_moduleId_fkey")
 }
@@ -433,6 +439,7 @@ model purchasebill {
   createdAt         DateTime            @default(now())
   updatedAt         DateTime
   tenantId          String
+  branchId          String?
   debitnote         debitnote[]
   payment           payment[]
   supplier          supplier?           @relation(fields: [supplierId], references: [id], map: "PurchaseBill_supplierId_fkey")
@@ -558,6 +565,7 @@ model saleinvoice {
   ewayBillNumber  String?
   irn             String?
   tenantId        String
+  branchId        String?
   creditnote      creditnote[]
   payment         payment[]
   customer        customer?          @relation(fields: [customerId], references: [id], map: "SaleInvoice_customerId_fkey")
@@ -700,6 +708,7 @@ model stockbatch {
   sellingPrice    Float             @default(0)
   supplierId      String?
   tenantId        String
+  branchId        String?
   stockadjustment stockadjustment[]
   product         product           @relation(fields: [productId], references: [id], map: "StockBatch_productId_fkey")
   supplier        supplier?         @relation(fields: [supplierId], references: [id], map: "StockBatch_supplierId_fkey")
@@ -903,6 +912,7 @@ model tenant {
   tenantsettings      tenantsettings?
   user                user[]
   warehouse           warehouse[]
+  branch              branch[]
 }
 
 model tenantsettings {
@@ -913,6 +923,8 @@ model tenantsettings {
   invoiceCompleted         Boolean @default(false)
   notificationCompleted    Boolean @default(false)
   enableMedicalInfo        Boolean @default(false)
+  walkInCustomerBehavior   String  @default("OPTION_A")
+  allowPharmacistCustomerCreation Boolean @default(false)
   tenant                   tenant  @relation(fields: [tenantId], references: [id], map: "TenantSettings_tenantId_fkey")
 }
 
@@ -935,7 +947,7 @@ model user {
   email                                        String                  @unique(map: "User_email_key")
   mobile                                       String                  @unique(map: "User_mobile_key")
   password                                     String?
-  role                                         user_role
+  role                                         String
   createdAt                                    DateTime                @default(now())
   updatedAt                                    DateTime
   avatarKey                                    String?
@@ -975,6 +987,8 @@ model user {
   other_user_user_reportingManagerIdTouser     user[]                  @relation("user_reportingManagerIdTouser")
   tenant                                       tenant?                 @relation(fields: [tenantId], references: [id], map: "User_tenantId_fkey")
   userrole                                     userrole[]
+  userpermission                               userpermission[]
+  userbranch                                   userbranch[]
 
   @@index([createdById], map: "User_createdById_fkey")
   @@index([reportingManagerId], map: "User_reportingManagerId_fkey")
@@ -1258,4 +1272,40 @@ enum user_status {
   PENDING
   ACTIVE
   DISABLED
+}
+
+model branch {
+  id           String         @id
+  name         String
+  tenantId     String
+  tenant       tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  userbranch   userbranch[]
+
+  @@index([tenantId], map: "Branch_tenantId_fkey")
+}
+
+model userbranch {
+  id       String @id
+  userId   String
+  branchId String
+  branch   branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  user     user   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, branchId], map: "UserBranch_userId_branchId_key")
+  @@index([branchId], map: "UserBranch_branchId_fkey")
+  @@index([userId], map: "UserBranch_userId_fkey")
+}
+
+model userpermission {
+  id           String     @id
+  userId       String
+  permissionId String
+  permission   permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  user         user       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permissionId], map: "UserPermission_userId_permissionId_key")
+  @@index([permissionId], map: "UserPermission_permissionId_fkey")
+  @@index([userId], map: "UserPermission_userId_fkey")
 }

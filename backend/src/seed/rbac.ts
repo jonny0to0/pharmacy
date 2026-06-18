@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { randomUUID } from "crypto";
 
 const prisma = new PrismaClient();
 
@@ -32,7 +33,7 @@ async function main() {
     const module = await prisma.module.upsert({
       where: { name: moduleName },
       update: {},
-      create: { name: moduleName },
+      create: { id: randomUUID(), name: moduleName },
     });
 
     for (const action of ACTIONS) {
@@ -41,6 +42,7 @@ async function main() {
         where: { name: permissionName },
         update: { moduleId: module.id, action },
         create: {
+          id: randomUUID(),
           name: permissionName,
           action,
           moduleId: module.id,
@@ -98,10 +100,12 @@ async function main() {
     } else {
       await prisma.role.create({
         data: {
+          id: randomUUID(),
           name: roleData.name,
           description: roleData.description,
           isSystem: true,
-          tenantId: null
+          tenantId: null,
+          updatedAt: new Date()
         }
       });
       console.log(`Created system role: ${roleData.name}`);
@@ -124,10 +128,10 @@ async function main() {
 
   for (const role of adminRoles) {
     for (const perm of allPermissions) {
-      await prisma.rolePermission.upsert({
+      await prisma.rolepermission.upsert({
         where: { roleId_permissionId: { roleId: role.id, permissionId: perm.id } },
         update: {},
-        create: { roleId: role.id, permissionId: perm.id },
+        create: { id: randomUUID(), roleId: role.id, permissionId: perm.id },
       });
     }
   }
@@ -145,10 +149,10 @@ async function main() {
       p.name.startsWith("SETTINGS_OPERATIONAL")
     );
     for (const perm of managerPerms) {
-      await prisma.rolePermission.upsert({
+      await prisma.rolepermission.upsert({
         where: { roleId_permissionId: { roleId: managerRole.id, permissionId: perm.id } },
         update: {},
-        create: { roleId: managerRole.id, permissionId: perm.id },
+        create: { id: randomUUID(), roleId: managerRole.id, permissionId: perm.id },
       });
     }
   }
@@ -162,10 +166,10 @@ async function main() {
       p.name.startsWith("CUSTOMERS")
     );
     for (const perm of cashierPerms) {
-      await prisma.rolePermission.upsert({
+      await prisma.rolepermission.upsert({
         where: { roleId_permissionId: { roleId: cashierRole.id, permissionId: perm.id } },
         update: {},
-        create: { roleId: cashierRole.id, permissionId: perm.id },
+        create: { id: randomUUID(), roleId: cashierRole.id, permissionId: perm.id },
       });
     }
   }
@@ -180,10 +184,10 @@ async function main() {
       p.name.startsWith("CUSTOMERS")
     );
     for (const perm of pharmacistPerms) {
-      await prisma.rolePermission.upsert({
+      await prisma.rolepermission.upsert({
         where: { roleId_permissionId: { roleId: pharmacistRole.id, permissionId: perm.id } },
         update: {},
-        create: { roleId: pharmacistRole.id, permissionId: perm.id },
+        create: { id: randomUUID(), roleId: pharmacistRole.id, permissionId: perm.id },
       });
     }
   }
@@ -197,11 +201,13 @@ async function main() {
     where: { email: adminEmail },
     update: { password: hashedPassword, role: "SUPER_ADMIN" },
     create: {
+      id: randomUUID(),
       name: "System Admin",
       email: adminEmail,
       mobile: "0000000000",
       password: hashedPassword,
       role: "SUPER_ADMIN",
+      updatedAt: new Date()
     },
   });
 
@@ -211,7 +217,7 @@ async function main() {
   });
 
   if (superAdminRole) {
-    await prisma.userRole.upsert({
+    await prisma.userrole.upsert({
       where: {
         userId_roleId: {
           userId: user.id,
@@ -220,6 +226,7 @@ async function main() {
       },
       update: {},
       create: {
+        id: randomUUID(),
         userId: user.id,
         roleId: superAdminRole.id,
       },

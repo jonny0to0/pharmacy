@@ -2,6 +2,7 @@ import prisma from "./src/db.js";
 import bcrypt from "bcryptjs";
 import { SubscriptionService } from "./src/services/SubscriptionService.js";
 import jwt from "jsonwebtoken";
+import { randomUUID } from "crypto";
 
 const ACCESS_TOKEN_EXPIRY = "15m";
 const REFRESH_TOKEN_EXPIRY = "7d";
@@ -24,8 +25,8 @@ const generateTokens = (user: any) => {
 
 async function main() {
   const name = "Test User Final Iteration";
-  const email = "final_test_success_v4@example.com";
-  const mobile = "1234567897";
+  const email = `final_test_success_${Date.now()}@example.com`;
+  const mobile = `98765${Math.floor(10000 + Math.random() * 90000)}`;
   const password = "Password123!";
   const businessName = "Final Test Pharma";
 
@@ -37,17 +38,19 @@ async function main() {
 
     const result = await prisma.$transaction(async (tx) => {
       console.log("1. Creating Tenant...");
+      const tenantId = randomUUID();
       const tenant = await tx.tenant.create({
-        data: { businessName, isSetupCompleted: false },
+        data: { id: tenantId, businessName, isSetupCompleted: false, updatedAt: new Date() },
       });
       console.log("Tenant ID:", tenant.id);
 
       console.log("2. Creating TenantSettings...");
-      await tx.tenantsettings.create({ data: { tenantId: tenant.id } });
+      await tx.tenantsettings.create({ data: { id: randomUUID(), tenantId: tenant.id } });
 
       console.log("3. Creating User...");
+      const userId = randomUUID();
       const newUser = await tx.user.create({
-        data: { name, email, mobile, password: hashedPassword, role: "BUSINESS_ADMIN", status: "ACTIVE", tenantId: tenant.id }
+        data: { id: userId, name, email, mobile, password: hashedPassword, role: "BUSINESS_ADMIN", status: "ACTIVE", tenantId: tenant.id, updatedAt: new Date() }
       });
       console.log("User ID:", newUser.id);
 
@@ -59,7 +62,7 @@ async function main() {
       if (businessAdminRole) {
         console.log("5. Assigning Role...");
         await tx.userrole.create({
-          data: { userId: newUser.id, roleId: businessAdminRole.id }
+          data: { id: randomUUID(), userId: newUser.id, roleId: businessAdminRole.id }
         });
       }
 
@@ -68,7 +71,7 @@ async function main() {
 
       console.log("7. Creating NotificationPreference...");
       const pref = await tx.notificationpreference.create({
-        data: { userId: newUser.id, email: true, inApp: true, lowStock: true, newOrder: true }
+        data: { id: randomUUID(), userId: newUser.id, email: true, inApp: true, lowStock: true, newOrder: true }
       });
       console.log("Notification Preference ID:", pref.id);
       

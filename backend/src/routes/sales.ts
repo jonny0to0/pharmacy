@@ -2,16 +2,20 @@ import express, { type Request, type Response } from "express";
 import prisma from "../db.js";
 import { authenticateToken } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/permission.middleware.js";
+import { checkBranchRestriction } from "../middleware/branch.middleware.js";
 import { randomUUID } from "crypto";
 
 const router = express.Router();
  
 
 // Get all sales invoices
-router.get("/", authenticateToken, requirePermission("SALES.READ"), async (req: Request, res: Response) => {
+router.get("/", authenticateToken, requirePermission("SALES.READ"), checkBranchRestriction, async (req: Request, res: Response) => {
   try {
     const invoices = await prisma.saleinvoice.findMany({
-      where: { tenantId: req.user!.tenantId },
+      where: { 
+        tenantId: req.user!.tenantId,
+        ...(req.allowedBranchIds ? { branchId: { in: req.allowedBranchIds } } : {})
+      },
       include: {
         customer: { select: { name: true, phone: true }},
         saleinvoiceitem: true
@@ -33,8 +37,8 @@ router.get("/", authenticateToken, requirePermission("SALES.READ"), async (req: 
 });
 
 // Create a new sales invoice
-router.post("/", authenticateToken, requirePermission("SALES.CREATE"), async (req: Request, res: Response): Promise<any> => {
-  const { invoiceNumber, customerId, type, items, subTotal, totalTax, discount, cgst, sgst, igst, grandTotal, amountPaid, paymentMode, isCash } = req.body;
+router.post("/", authenticateToken, requirePermission("SALES.CREATE"), checkBranchRestriction, async (req: Request, res: Response): Promise<any> => {
+  const { invoiceNumber, customerId, type, items, subTotal, totalTax, discount, cgst, sgst, igst, grandTotal, amountPaid, paymentMode, isCash, branchId } = req.body;
   const tenantId = req.user!.tenantId;
 
   if (!items || items.length === 0) {
@@ -82,6 +86,7 @@ router.post("/", authenticateToken, requirePermission("SALES.CREATE"), async (re
           invoiceNumber,
           customerId,
           tenantId,
+          branchId: branchId || (req.allowedBranchIds ? req.allowedBranchIds[0] : null),
           type: type || "TAX_INVOICE",
           subTotal: Number(subTotal),
           totalTax: Number(totalTax),
@@ -166,6 +171,7 @@ router.post("/", authenticateToken, requirePermission("SALES.CREATE"), async (re
             customerId: customerId || null,
             saleInvoiceId: invoice.id,
             tenantId,
+            branchId: branchId || (req.allowedBranchIds ? req.allowedBranchIds[0] : null),
             updatedAt: new Date()
           }
         });

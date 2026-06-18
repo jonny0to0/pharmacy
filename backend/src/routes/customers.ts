@@ -29,8 +29,17 @@ router.get("/", authenticateToken, requirePermission("CUSTOMERS.READ"), async (r
 // Create customer
 router.post("/", authenticateToken, requirePermission("CUSTOMERS.CREATE"), validate(customerSchema), async (req: Request, res: Response): Promise<any> => {
   try {
-    const { name, phone, email, gst_number, address, state, customerType, creditLimit, creditDays } = req.body;
+    const { name, phone, email, gst_number, address, state, customerType, creditLimit, creditDays, dob, gender, membershipType } = req.body;
     const tenantId = req.user!.tenantId;
+
+    if (req.user!.roles.includes('PHARMACIST')) {
+      const settings = await prisma.tenantsettings.findUnique({
+        where: { tenantId: tenantId as string }
+      });
+      if (!settings?.allowPharmacistCustomerCreation) {
+        return res.status(403).json({ message: "Pharmacists are not permitted to register customers under current settings." });
+      }
+    }
 
     if (phone) {
         const existing = await prisma.customer.findUnique({
@@ -60,6 +69,9 @@ router.post("/", authenticateToken, requirePermission("CUSTOMERS.CREATE"), valid
         outstandingBalance: 0,
         isDeleted: false,
         tenantId: tenantId as string,
+        dob: dob ? new Date(dob) : null,
+        gender: gender || null,
+        membershipType: membershipType || "Regular",
         updatedAt: new Date()
       }
     });
@@ -76,7 +88,7 @@ router.put("/:id", authenticateToken, requirePermission("CUSTOMERS.UPDATE"), val
   try {
     const { id } = req.params;
     const tenantId = req.user!.tenantId;
-    const { name, phone, email, gst_number, address, state, customerType, creditLimit, creditDays } = req.body;
+    const { name, phone, email, gst_number, address, state, customerType, creditLimit, creditDays, dob, gender, membershipType } = req.body;
 
     const customerRecord = await prisma.customer.findFirst({
         where: { id: id as string, tenantId: tenantId as string }
@@ -103,6 +115,9 @@ router.put("/:id", authenticateToken, requirePermission("CUSTOMERS.UPDATE"), val
     if (customerType !== undefined) updateData.customerType = customerType;
     if (creditLimit !== undefined) updateData.creditLimit = Number(creditLimit);
     if (creditDays !== undefined) updateData.creditDays = Number(creditDays);
+    if (dob !== undefined) updateData.dob = dob ? new Date(dob) : null;
+    if (gender !== undefined) updateData.gender = gender;
+    if (membershipType !== undefined) updateData.membershipType = membershipType;
     updateData.updatedAt = new Date();
 
     const customer = await prisma.customer.update({
