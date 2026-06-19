@@ -1,4 +1,5 @@
 import { useAuth } from '../context/AuthContext';
+import alerts from '../utils/alerts';
 
 export const usePermission = () => {
   const { user } = useAuth();
@@ -20,9 +21,15 @@ export const usePermission = () => {
    */
   const hasModuleAccess = (module: string) => {
     if (!user) return false;
-    if (user?.roles?.includes('SUPER_ADMIN') || user?.roles?.includes('BUSINESS_ADMIN')) return true;
+    if (
+      user?.roles?.includes('SUPER_ADMIN') || 
+      user?.roles?.includes('BUSINESS_ADMIN') || 
+      user?.permissions?.includes('ALL_ACCESS')
+    ) {
+      return true;
+    }
     
-    return (user.permissions || []).some(p => p.startsWith(`${module}.`));
+    return (user.permissions || []).some(p => p === `${module}.READ` || p === `${module}.CREATE`);
   };
 
   /**
@@ -33,5 +40,17 @@ export const usePermission = () => {
     return user.roles.some(r => roleNames.includes(r));
   };
 
-  return { hasPermission, hasModuleAccess, hasRole };
+  /**
+   * Checks permission before executing a callback action.
+   * Shows a friendly alert if unauthorized.
+   */
+  const checkPermissionAndRun = (permission: string, action: () => void) => {
+    if (hasPermission(permission)) {
+      action();
+    } else {
+      alerts.friendlyError('Permission denied');
+    }
+  };
+
+  return { hasPermission, hasModuleAccess, hasRole, checkPermissionAndRun };
 };

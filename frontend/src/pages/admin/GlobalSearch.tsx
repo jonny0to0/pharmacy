@@ -53,7 +53,7 @@ const AdministrativeSearch: React.FC = () => {
                   <Badge variant="neutral" className="bg-slate-100 text-slate-500 font-black">{results.tenants?.length || 0}</Badge>
                </div>
                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {(results.tenants || []).map((t) => (
+                  {(results.tenants || []).map((t: any) => (
                      <Card key={t.id} className="hover:border-indigo-200 hover:shadow-lg hover:shadow-indigo-500/5 transition-all cursor-pointer group bg-white border-slate-100">
                         <CardContent className="p-6 flex items-center justify-between">
                            <div className="flex items-center gap-4">
@@ -81,7 +81,7 @@ const AdministrativeSearch: React.FC = () => {
                   <Badge variant="neutral" className="bg-slate-100 text-slate-500 font-black">{results.users?.length || 0}</Badge>
                </div>
                <div className="space-y-3">
-                  {(results.users || []).map((u) => (
+                  {(results.users || []).map((u: any) => (
                      <div key={u.id} className="p-4 rounded-2xl bg-white border border-slate-100 flex items-center justify-between hover:bg-slate-50 transition-colors cursor-pointer group">
                         <div className="flex items-center gap-4">
                            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 font-bold">
@@ -111,7 +111,7 @@ const AdministrativeSearch: React.FC = () => {
                   <Badge variant="neutral" className="bg-slate-100 text-slate-500 font-black">{results.subscriptions?.length || 0}</Badge>
                </div>
                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {(results.subscriptions || []).map((s) => (
+                  {(results.subscriptions || []).map((s: any) => (
                      <div key={s.id} className="p-5 rounded-3xl bg-white border border-slate-100 flex flex-col gap-4 hover:shadow-xl hover:shadow-violet-500/5 transition-all">
                         <div className="flex justify-between items-start">
                            <div>

@@ -5,6 +5,7 @@ import { requirePermission } from "../middleware/permission.middleware.js";
 import { auditLog } from "../middleware/audit.middleware.js";
 import { cacheService } from "../services/cache.service.js";
 import { randomUUID } from "crypto";
+import { createAuditLog } from "../services/auditService.js";
 
 const router = express.Router();
 
@@ -81,7 +82,14 @@ const updatePermissions = async (req: Request, res: Response) => {
     const tenantId = req.user!.tenantId;
 
     const role = await prisma.role.findFirst({
-      where: { id, OR: [{ tenantId }, { isSystem: true, tenantId: null }] }
+      where: { id, OR: [{ tenantId }, { isSystem: true, tenantId: null }] },
+      include: {
+        rolepermission: {
+          include: {
+            permission: true
+          }
+        }
+      }
     });
 
     if (!role) return res.status(404).json({ error: "Role not found" });
@@ -89,7 +97,23 @@ const updatePermissions = async (req: Request, res: Response) => {
       return res.status(403).json({ error: "Cannot modify system roles" });
     }
 
-    // Update permissions (delete old mappings and create new ones)
+    const oldPermissionNames = role.rolepermission.map(rp => rp.permission.name);
+
+    const newPermissions = await prisma.permission.findMany({
+      where: { id: { in: permissionIds } }
+    });
+    const newPermissionNames = newPermissions.map(p => p.name);
+
+    const added = newPermissionNames.filter(name => !oldPermissionNames.includes(name));
+    const removed = oldPermissionNames.filter(name => !newPermissionNames.includes(name));
+
+    const usersWithRole = await prisma.userrole.findMany({
+      where: { roleId: id },
+      select: { userId: true }
+    });
+    const userIds = usersWithRole.map(ur => ur.userId);
+
+    // Update permissions (delete old mappings and create new ones) along with versions
     await prisma.$transaction([
       prisma.rolepermission.deleteMany({ where: { roleId: id } }),
       prisma.rolepermission.createMany({
@@ -98,18 +122,42 @@ const updatePermissions = async (req: Request, res: Response) => {
           roleId: id,
           permissionId: pId
         }))
+      }),
+      prisma.role.update({
+        where: { id },
+        data: {
+          permissionVersion: { increment: 1 },
+          updatedAt: new Date()
+        }
+      }),
+      prisma.user.updateMany({
+        where: { id: { in: userIds } },
+        data: {
+          permissionVersion: { increment: 1 }
+        }
       })
     ]);
 
     // INVALIDATE CACHE for all users with this role
-    const usersWithRole = await prisma.userrole.findMany({
-      where: { roleId: id },
-      select: { userId: true }
-    });
-
-    for (const u of usersWithRole) {
-      await cacheService.delete(`user_perms:${u.userId}`);
+    for (const uId of userIds) {
+      await cacheService.delete(`user_perms:${uId}`);
     }
+
+    // CREATE AUDIT LOG
+    await createAuditLog(
+      req.user!.userId,
+      "ROLES",
+      "UPDATE_ROLE_PERMISSIONS",
+      id,
+      {
+        roleName: role.name,
+        addedPermissions: added,
+        removedPermissions: removed,
+        oldValue: oldPermissionNames.join(", "),
+        newValue: newPermissionNames.join(", ")
+      },
+      "INFO"
+    );
 
     res.json({ message: "Permissions updated successfully" });
   } catch (error) {

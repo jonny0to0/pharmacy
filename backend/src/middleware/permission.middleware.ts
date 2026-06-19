@@ -3,7 +3,7 @@ import prisma from "../db.js";
 import { cacheService } from "../services/cache.service.js";
 import { createAuditLog } from "../services/auditService.js";
 
-export const requirePermission = (permission: string) => {
+export const requirePermission = (permission: string | string[]) => {
   return async (req: Request, res: Response, next: NextFunction): Promise<any> => {
     if (!req.user) {
       return res.status(401).json({ error: "Unauthorized" });
@@ -59,7 +59,18 @@ export const requirePermission = (permission: string) => {
       }
 
       // 3. Deny-by-Default Policy (with Super Admin and Business Admin bypass)
-      const hasPermission = req.user?.roles.includes("SUPER_ADMIN") || req.user?.roles.includes("BUSINESS_ADMIN") || permissions.includes(permission) || permissions.includes("ALL_ACCESS");
+      const checkSinglePermission = (perm: string) => {
+        return (
+          req.user?.roles.includes("SUPER_ADMIN") ||
+          req.user?.roles.includes("BUSINESS_ADMIN") ||
+          permissions!.includes(perm) ||
+          permissions!.includes("ALL_ACCESS")
+        );
+      };
+
+      const hasPermission = Array.isArray(permission)
+        ? permission.some(checkSinglePermission)
+        : checkSinglePermission(permission);
       
       if (!hasPermission) {
         // Log unauthorized attempt
@@ -77,7 +88,11 @@ export const requirePermission = (permission: string) => {
         );
 
         console.warn(`[SECURITY] Unauthorized access attempt by user ${userId} to ${permission}`);
-        return res.status(403).json({ error: `Forbidden: Missing permission ${permission}` });
+        return res.status(403).json({
+          success: false,
+          message: "Access Restricted",
+          code: "PERMISSION_DENIED"
+        });
       }
 
       next();

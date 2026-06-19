@@ -1,10 +1,12 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import Layout from './components/Layout';
 import { useAuth } from './context/AuthContext';
 import { SidebarProvider } from './context/SidebarContext';
 import AccessDenied from './components/AccessDenied';
 import { usePermission } from './hooks/usePermission';
+import alerts from './utils/alerts';
+import api from './api/axios';
 
 // Pages
 import Dashboard from './pages/Dashboard';
@@ -13,6 +15,7 @@ import Purchases from './pages/Purchases';
 import Payments from './pages/Payments';
 import Expenses from './pages/Expenses';
 import Products from './pages/Products';
+import Inventory from './pages/Inventory';
 import Customers from './pages/Customers';
 import Suppliers from './pages/Suppliers';
 import Settings from './pages/Settings';
@@ -94,15 +97,112 @@ function ProtectedRoute({ children, requireSetup = true }: { children: React.Rea
   return <>{children}</>;
 }
 
-function PermissionRoute({ children, permission, module }: { children: React.ReactNode, permission?: string, module?: string }) {
-  const { hasPermission, hasModuleAccess } = usePermission();
+function GuestRoute({ children }: { children: React.ReactNode }) {
+  const { token, user } = useAuth();
+  
+  if (token && user) {
+    const primaryRole = Array.isArray(user.roles) ? user.roles[0] : null;
+    const defaultPath = primaryRole ? (ROLE_LANDING_PAGES[primaryRole] || '/dashboard') : '/dashboard';
+    return <Navigate to={defaultPath} replace />;
+  }
+  
+  return <>{children}</>;
+}
 
-  if (permission && !hasPermission(permission)) {
-    return <AccessDenied />;
+function PermissionRoute({ children, permission, module }: { children: React.ReactNode, permission?: string, module?: string }) {
+  const { user, setUser } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const { hasPermission, hasModuleAccess } = usePermission();
+  const initialAuthorized = 
+    (permission ? hasPermission(permission) : true) &&
+    (module ? hasModuleAccess(module) : true);
+
+  const [isRouteAuthorized, setIsRouteAuthorized] = React.useState<boolean | null>(
+    initialAuthorized ? true : null
+  );
+
+  // Sync route authorization status when user context transitions
+  useEffect(() => {
+    if (user) {
+      const currentAuthorized = 
+        (permission ? hasPermission(permission) : true) &&
+        (module ? hasModuleAccess(module) : true);
+      
+      // Only transition if verification is active or context changes
+      if (isRouteAuthorized !== null || currentAuthorized) {
+        setIsRouteAuthorized(currentAuthorized);
+      }
+    }
+  }, [user, permission, module, hasPermission, hasModuleAccess]);
+
+  // Reactive redirect: Kick out immediately if permissions are revoked or verification fails
+  useEffect(() => {
+    if (isRouteAuthorized === false) {
+      alerts.friendlyError('Permission denied');
+      navigate('/unauthorized', { replace: true });
+    }
+  }, [isRouteAuthorized, navigate]);
+
+  // Live session check on route changes/mounts
+  useEffect(() => {
+    let isMounted = true;
+    if (!initialAuthorized) {
+      setIsRouteAuthorized(null);
+    }
+    const verifySession = async () => {
+      try {
+        const response = await api.get('/auth/session');
+        if (isMounted && response.data?.user) {
+          const updatedUser = response.data.user;
+          setUser(updatedUser);
+          
+          const hasPerm = (perm: string) => {
+            if (updatedUser?.roles?.includes('SUPER_ADMIN') || updatedUser?.roles?.includes('BUSINESS_ADMIN') || updatedUser?.permissions?.includes('ALL_ACCESS')) {
+              return true;
+            }
+            return (updatedUser?.permissions || []).includes(perm);
+          };
+          
+          const hasMod = (mod: string) => {
+            if (updatedUser?.roles?.includes('SUPER_ADMIN') || updatedUser?.roles?.includes('BUSINESS_ADMIN')) return true;
+            return (updatedUser?.permissions || []).some((p: string) => p.startsWith(`${mod}.`));
+          };
+
+          const isAuth = 
+            (permission ? hasPerm(permission) : true) &&
+            (module ? hasMod(module) : true);
+
+          setIsRouteAuthorized(isAuth);
+        }
+      } catch (err: any) {
+        if (isMounted) {
+          setIsRouteAuthorized(false);
+          if (err.response?.status === 403) {
+            navigate('/unauthorized', { replace: true });
+          }
+        }
+      }
+    };
+
+    verifySession();
+    return () => {
+      isMounted = false;
+    };
+  }, [location.pathname, navigate, setUser, permission, module, initialAuthorized]);
+
+  if (isRouteAuthorized === null) {
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50 space-y-4">
+        <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent animate-spin rounded-full" />
+        <p className="text-xs font-black text-slate-400 uppercase tracking-widest animate-pulse">Verifying Permissions...</p>
+      </div>
+    );
   }
 
-  if (module && !hasModuleAccess(module)) {
-    return <AccessDenied />;
+  if (!isRouteAuthorized) {
+    return null;
   }
 
   return <>{children}</>;
@@ -118,12 +218,35 @@ function RoleBasedHome() {
 }
 
 function App() {
+  useEffect(() => {
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        window.location.reload();
+        return;
+      }
+      
+      const token = localStorage.getItem('accessToken');
+      const isPublicPage = 
+        window.location.pathname.includes('/login') || 
+        window.location.pathname.includes('/register') || 
+        window.location.pathname.includes('/setup-account') ||
+        window.location.pathname.includes('/unauthorized');
+
+      if (!token && !isPublicPage) {
+        window.location.replace('/login');
+      }
+    };
+
+    window.addEventListener('pageshow', handlePageShow);
+    return () => window.removeEventListener('pageshow', handlePageShow);
+  }, []);
+
   return (
     <Router>
       <SidebarProvider>
         <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+        <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
+        <Route path="/register" element={<GuestRoute><Register /></GuestRoute>} />
         <Route path="/setup-account" element={<SetupPassword />} />
         <Route path="/unauthorized" element={<AccessDenied />} />
         
@@ -143,6 +266,7 @@ function App() {
           <Route path="/payments" element={<PermissionRoute module="PAYMENTS"><Payments /></PermissionRoute>} />
           <Route path="/expenses" element={<PermissionRoute module="EXPENSES"><Expenses /></PermissionRoute>} />
           <Route path="/products" element={<PermissionRoute module="PRODUCTS"><Products /></PermissionRoute>} />
+          <Route path="/inventory" element={<PermissionRoute module="INVENTORY"><Inventory /></PermissionRoute>} />
           {/* We'll handle business-specific sub-routes here if needed, or inside the components */}
           <Route path="/customers" element={<PermissionRoute module="CUSTOMERS"><Customers /></PermissionRoute>} />
           <Route path="/suppliers" element={<PermissionRoute module="SUPPLIERS"><Suppliers /></PermissionRoute>} />

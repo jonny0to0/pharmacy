@@ -14,6 +14,7 @@ import { Card, CardContent } from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import { useAuth } from '../context/AuthContext';
 import alerts from '../utils/alerts';
+import { usePermission } from '../hooks/usePermission';
 
 interface Product {
   id: string;
@@ -35,11 +36,15 @@ interface Product {
   sideEffects?: string;
   precautions?: string;
   dosageInfo?: string;
+  isActive?: boolean;
+  isDeleted?: boolean;
+  manufacturer?: string | null;
 }
 
 const Products = () => {
   const { user } = useAuth();
   const qc = useQueryClient();
+  const { hasPermission, checkPermissionAndRun } = usePermission();
   const businessType = user?.businessType || 'PHARMACY';
   const isPharma = businessType === 'PHARMACY' || businessType === 'WHOLESALER' || businessType === 'DISTRIBUTOR';
   
@@ -73,27 +78,33 @@ const Products = () => {
   });
 
   const openAddModal = () => {
-    setEditingProduct(null);
-    setIsModalOpen(true);
+    checkPermissionAndRun('PRODUCTS.CREATE', () => {
+      setEditingProduct(null);
+      setIsModalOpen(true);
+    });
   };
 
   const openEditModal = (product: Product) => {
-    setEditingProduct(product);
-    setIsModalOpen(true);
+    checkPermissionAndRun('PRODUCTS.UPDATE', () => {
+      setEditingProduct(product);
+      setIsModalOpen(true);
+    });
   };
 
   const handleDelete = async (id: string) => {
-    const result = await alerts.confirm('Delete Product', 'Executing permanent removal of this SKU profile. Continue?', 'Delete');
-    if (result.isConfirmed) {
-      await deleteMutation.mutateAsync(id);
-    }
+    checkPermissionAndRun('PRODUCTS.DELETE', async () => {
+      const result = await alerts.confirm('Delete Product', 'Executing permanent removal of this SKU profile. Continue?', 'Delete');
+      if (result.isConfirmed) {
+        await deleteMutation.mutateAsync(id);
+      }
+    });
   };
 
-  const pageTitle = businessType === 'WHOLESALER' ? 'Warehouse Stock' : 
-                   (isPharma ? 'Medicine Inventory' : 'Inventory Master');
+  const pageTitle = isPharma ? 'Medicine Catalog' : 'Product Catalog';
 
-  const totalValue = products.reduce((sum, p) => sum + (p.currentStock * p.purchasePrice), 0);
-  const lowStockCount = products.filter(p => p.currentStock <= p.minStockLevel).length;
+  const activeProducts = products.filter(p => p.isActive && !p.isDeleted);
+  const categoriesCount = new Set(products.map(p => p.category || 'General')).size;
+  const manufacturersCount = new Set(products.map(p => p.manufacturer).filter(Boolean)).size;
 
   return (
     <div className="p-4 md:p-8 space-y-8 animate-in fade-in duration-700 pb-20 max-w-7xl mx-auto">
@@ -101,13 +112,13 @@ const Products = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{pageTitle}</h1>
-          <p className="text-sm font-medium text-slate-500 mt-1">Manage global inventory records and stock synchronization.</p>
+          <p className="text-sm font-medium text-slate-500 mt-1">Manage global product catalog profiles, specifications and pricing.</p>
         </div>
         <div className="flex gap-3">
           <Button variant="outline" leftIcon={<RefreshCw size={18} />} onClick={() => qc.invalidateQueries({ queryKey: ['products'] })}>
              Sync
           </Button>
-          <Button onClick={openAddModal} leftIcon={<Plus size={18} />}>
+          <Button onClick={openAddModal} leftIcon={<Plus size={18} />} disabled={!hasPermission('PRODUCTS.CREATE')}>
             Add Product
           </Button>
         </div>
@@ -115,38 +126,38 @@ const Products = () => {
 
       {/* Analytics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="relative overflow-hidden group hover:shadow-md transition-all border-0">
+        <Card className="relative overflow-hidden group hover:shadow-md transition-all border-0 bg-white">
           <CardContent className="p-6 border border-slate-100 rounded-2xl h-full">
-            <p className="text-xs font-semibold text-slate-500">Inventory Valuation</p>
+            <p className="text-xs font-semibold text-slate-500">Catalog SKUs</p>
             <div className="flex items-baseline gap-2 mt-2">
-              <h3 className="text-2xl font-bold text-slate-900">₹{totalValue.toLocaleString()}</h3>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider bg-indigo-50 text-indigo-600">Total Assets</span>
+              <h3 className="text-2xl font-bold text-slate-900">{products.length}</h3>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider bg-indigo-50 text-indigo-600">Total Items</span>
             </div>
-            <BarChart3 className="absolute bottom-4 right-4 text-indigo-50 opacity-10 group-hover:scale-110 transition-transform duration-500" size={80} />
+            <Package className="absolute bottom-4 right-4 text-indigo-50 opacity-10 group-hover:scale-110 transition-transform duration-500" size={80} />
           </CardContent>
         </Card>
 
-        <Card className="relative overflow-hidden group hover:shadow-md transition-all border-0">
+        <Card className="relative overflow-hidden group hover:shadow-md transition-all border-0 bg-white">
           <CardContent className="p-6 border border-slate-100 rounded-2xl h-full">
-            <p className="text-xs font-semibold text-slate-500">Low Stock Alerts</p>
+            <p className="text-xs font-semibold text-slate-500">Configured Categories</p>
             <div className="flex items-baseline gap-2 mt-2">
-              <h3 className="text-2xl font-bold text-rose-600">{lowStockCount}</h3>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider bg-rose-50 text-rose-600">Reorder Required</span>
+              <h3 className="text-2xl font-bold text-slate-900">{categoriesCount}</h3>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider bg-emerald-50 text-emerald-600">Active Groups</span>
             </div>
-            <AlertTriangle className="absolute bottom-4 right-4 text-rose-50 opacity-10 group-hover:scale-110 transition-transform duration-500" size={80} />
+            <Layers className="absolute bottom-4 right-4 text-emerald-50 opacity-10 group-hover:scale-110 transition-transform duration-500" size={80} />
           </CardContent>
         </Card>
 
-        <Card className="relative overflow-hidden group hover:shadow-md transition-all border-0">
-           <CardContent className="p-6 bg-slate-900 rounded-2xl border border-slate-800 shadow-xl h-full">
+        <Card className="relative overflow-hidden group hover:shadow-md transition-all border-0 bg-slate-900">
+           <CardContent className="p-6 rounded-2xl border border-slate-800 shadow-xl h-full">
               <div className="relative z-10 flex flex-col h-full justify-between">
-                 <p className="text-xs font-semibold text-slate-400">Master Catalog</p>
+                 <p className="text-xs font-semibold text-slate-400">Manufacturer Brands</p>
                  <div className="mt-2">
-                    <p className="text-white text-lg font-bold tracking-tight leading-tight">{products.length} SKUs Listed</p>
-                    <p className="text-slate-400 text-[10px] mt-1">Across {new Set(products.map(p => p.category)).size} categories</p>
+                    <p className="text-white text-lg font-bold tracking-tight leading-tight">{manufacturersCount} Listed Brands</p>
+                    <p className="text-slate-400 text-[10px] mt-1">Across all product catalog records</p>
                  </div>
               </div>
-              <Layers className="absolute -bottom-2 -right-2 w-24 h-24 text-slate-800 opacity-20" />
+              <BarChart3 className="absolute -bottom-2 -right-2 w-24 h-24 text-slate-800 opacity-20" />
            </CardContent>
         </Card>
       </div>
@@ -164,11 +175,6 @@ const Products = () => {
               className="py-2.5 shadow-sm"
             />
           </div>
-          
-          <div className="flex items-center gap-2 p-1 bg-slate-50 rounded-xl border border-slate-100">
-             <button onClick={() => setFilter('ALL')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${filter === 'ALL' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>All Items</button>
-             <button onClick={() => setFilter('LOW')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${filter === 'LOW' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Low Stock</button>
-          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -176,7 +182,7 @@ const Products = () => {
             <thead>
               <tr className="bg-slate-50/50 text-slate-500 text-[10px] uppercase font-bold tracking-widest border-b border-slate-100">
                 <th className="px-6 py-4">Product Details</th>
-                <th className="px-6 py-4">Inventory Info</th>
+                <th className="px-6 py-4">Brand & Unit</th>
                 <th className="px-6 py-4">Pricing (Buy/Sell)</th>
                 <th className="px-6 py-4 text-center">Status</th>
                 <th className="px-6 py-4 text-right">Actions</th>
@@ -187,10 +193,10 @@ const Products = () => {
                 <tr>
                   <td colSpan={5} className="px-6 py-20 text-center">
                     <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
-                    <p className="mt-4 text-slate-400 font-medium text-sm capitalize">Loading global inventory nodes...</p>
+                    <p className="mt-4 text-slate-400 font-medium text-sm capitalize">Loading global product nodes...</p>
                   </td>
                 </tr>
-              ) : filteredProducts.length === 0 ? (
+              ) : products.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-6 py-24 text-center">
                     <Archive className="w-12 h-12 text-slate-200 mx-auto mb-4" />
@@ -199,12 +205,12 @@ const Products = () => {
                   </td>
                 </tr>
               ) : (
-                filteredProducts.map((p) => (
+                products.map((p) => (
                   <tr key={p.id} className="group hover:bg-slate-50/50 transition-colors">
                     <td className="px-6 py-5">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center border border-slate-100 shadow-sm text-slate-400 group-hover:text-indigo-600 transition-colors">
-                          <Package size={24} />
+                           <Package size={24} />
                         </div>
                         <div>
                           <p onClick={() => openEditModal(p)} className="text-sm font-bold text-slate-900 hover:text-indigo-600 cursor-pointer transition-colors flex items-center gap-2">
@@ -218,13 +224,13 @@ const Products = () => {
                       </div>
                     </td>
                     <td className="px-6 py-5">
-                      <div className="flex flex-col gap-1.5">
-                        <div className="flex items-center gap-2">
-                           <span className={`text-lg font-bold tabular-nums ${p.currentStock <= p.minStockLevel ? 'text-rose-600' : 'text-slate-900'}`}>{p.currentStock}</span>
-                           <span className="text-[10px] font-bold text-slate-400 uppercase">{p.unit}</span>
+                      <div className="flex flex-col gap-1">
+                        <div className="text-sm font-semibold text-slate-800">
+                          {p.manufacturer || 'General Brand'}
                         </div>
-                        <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-400">
-                          <MapPin size={10} /> {p.location || 'Unassigned'}
+                        <div className="flex items-center gap-2 text-[10px] font-semibold text-slate-400 uppercase">
+                          <span>Unit: {p.unit}</span>
+                          {p.barcode && <span>• Barcode: {p.barcode}</span>}
                         </div>
                       </div>
                     </td>
@@ -235,24 +241,23 @@ const Products = () => {
                        </div>
                     </td>
                     <td className="px-6 py-5 text-center">
-                       {p.currentStock <= p.minStockLevel ? (
-                         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-50 text-rose-600 border border-rose-100">
-                            <AlertCircle size={12} />
-                            <span className="text-[10px] font-bold uppercase tracking-tight">Low Stock</span>
-                         </div>
-                       ) : (
+                       {p.isActive ? (
                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                            <span className="text-[10px] font-bold uppercase tracking-tight">In Stock</span>
+                            <span className="text-[10px] font-bold uppercase tracking-tight">Active</span>
+                         </div>
+                       ) : (
+                         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-50 text-slate-400 border border-slate-100">
+                            <span className="text-[10px] font-bold uppercase tracking-tight">Inactive</span>
                          </div>
                        )}
                     </td>
                     <td className="px-6 py-5 text-right">
                        <div className="flex items-center justify-end gap-2 transition-opacity">
-                         <Button variant="outline" size="icon" onClick={() => openEditModal(p)} title="Edit SKU">
+                         <Button variant="outline" size="icon" onClick={() => openEditModal(p)} title="Edit SKU" disabled={!hasPermission('PRODUCTS.UPDATE')}>
                            <Edit3 size={16} />
                          </Button>
-                         <Button variant="danger" size="icon" onClick={() => handleDelete(p.id)} title="Archive Product">
+                         <Button variant="danger" size="icon" onClick={() => handleDelete(p.id)} title="Archive Product" disabled={!hasPermission('PRODUCTS.DELETE')}>
                            <Trash2 size={16} />
                          </Button>
                        </div>

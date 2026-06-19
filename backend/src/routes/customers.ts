@@ -9,7 +9,7 @@ import { randomUUID } from "crypto";
 const router = express.Router();
 
 // Get all active customers
-router.get("/", authenticateToken, requirePermission("CUSTOMERS.READ"), async (req: Request, res: Response) => {
+router.get("/", authenticateToken, requirePermission(["CUSTOMERS.READ", "SALES.READ", "SALES.CREATE"]), async (req: Request, res: Response) => {
   try {
     const customers = await prisma.customer.findMany({
       where: { isDeleted: false, tenantId: req.user!.tenantId as string },

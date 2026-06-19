@@ -10,6 +10,7 @@ import GenericProductForm from './GenericProductForm';
 import MedicalInfoForm from './MedicalInfoForm';
 import { useAuth } from '../context/AuthContext';
 import { useFormDraft } from '../hooks/useFormDraft';
+import { usePermission } from '../hooks/usePermission';
 import DraftRestorationModal from './DraftRestorationModal';
 import toast from 'react-hot-toast';
 
@@ -22,6 +23,7 @@ interface ProductManagementModalProps {
 
 const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ isOpen, onClose, onSuccess, initialData }) => {
   const { user } = useAuth();
+  const { hasModuleAccess } = usePermission();
   const businessType = user?.businessType || 'PHARMACY';
   const isPharma = businessType === 'PHARMACY' || businessType === 'WHOLESALER' || businessType === 'DISTRIBUTOR';
 
@@ -274,7 +276,7 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ isOpen,
             >
               <Package size={14} /> General Info
             </button>
-            {isPharma && !initialData && (
+            {isPharma && !initialData && hasModuleAccess('INVENTORY') && (
               <button
                 type="button"
                 onClick={() => setActiveTab('BATCHES')}
@@ -319,7 +321,7 @@ const ProductManagementModal: React.FC<ProductManagementModalProps> = ({ isOpen,
               )
             )}
 
-            {activeTab === 'BATCHES' && isPharma && !initialData && (
+            {activeTab === 'BATCHES' && isPharma && !initialData && hasModuleAccess('INVENTORY') && (
               <PharmaProductForm 
                 productData={formData}
                 onProductChange={handleInputChange}

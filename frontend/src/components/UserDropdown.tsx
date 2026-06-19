@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { usePermission } from '../hooks/usePermission';
+import alerts from '../utils/alerts';
 
 export default function UserDropdown() {
   const { user, logout } = useAuth();
@@ -52,10 +53,13 @@ export default function UserDropdown() {
     { label: 'Help & Support', icon: HelpCircle, path: '#' },
   ];
 
-  const filteredMenuItems = menuItems.filter(item => {
-    if (item.permission && !hasPermission(item.permission)) return false;
-    return true;
-  });
+  const processedMenuItems = menuItems.map(item => {
+    const isAuthorized = !item.permission || hasPermission(item.permission);
+    if (!isAuthorized) {
+      return null;
+    }
+    return { ...item, disabled: false };
+  }).filter((item): item is typeof menuItems[number] & { disabled: boolean } => item !== null);
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -111,14 +115,25 @@ export default function UserDropdown() {
 
           {/* Menu Items */}
           <div className="px-2 space-y-1">
-            {filteredMenuItems.map((item) => (
+            {processedMenuItems.map((item) => (
               <Link
                 key={item.label}
-                to={item.path}
-                onClick={() => setIsOpen(false)}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-blue-50 hover:text-blue-700 transition-all group"
+                to={item.disabled ? '#' : item.path}
+                onClick={(e) => {
+                  if (item.disabled) {
+                    e.preventDefault();
+                    alerts.friendlyError('Permission denied');
+                  } else {
+                    setIsOpen(false);
+                  }
+                }}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all group ${
+                  item.disabled 
+                    ? 'opacity-50 cursor-not-allowed text-slate-400 hover:bg-transparent' 
+                    : 'text-slate-600 hover:bg-blue-50 hover:text-blue-700'
+                }`}
               >
-                <item.icon className="w-4 h-4 text-slate-400 group-hover:text-blue-500 transition-colors" />
+                <item.icon className={`w-4 h-4 transition-colors ${item.disabled ? 'text-slate-350' : 'text-slate-400 group-hover:text-blue-500'}`} />
                 <span>{item.label}</span>
               </Link>
             ))}

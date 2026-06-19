@@ -522,6 +522,7 @@ model role {
   isSystem       Boolean          @default(false)
   createdAt      DateTime         @default(now())
   updatedAt      DateTime
+  permissionVersion Int              @default(1) @map("permission_version")
   tenant         tenant?          @relation(fields: [tenantId], references: [id], map: "Role_tenantId_fkey")
   rolepermission rolepermission[]
   userrole       userrole[]
@@ -925,6 +926,7 @@ model tenantsettings {
   enableMedicalInfo        Boolean @default(false)
   walkInCustomerBehavior   String  @default("OPTION_A")
   allowPharmacistCustomerCreation Boolean @default(false)
+  restrictedMenuBehavior   String  @default("HIDE")
   tenant                   tenant  @relation(fields: [tenantId], references: [id], map: "TenantSettings_tenantId_fkey")
 }
 
@@ -950,6 +952,7 @@ model user {
   role                                         String
   createdAt                                    DateTime                @default(now())
   updatedAt                                    DateTime
+  permissionVersion                            Int                     @default(1) @map("permission_version")
   avatarKey                                    String?
   createdById                                  String?
   department                                   String?

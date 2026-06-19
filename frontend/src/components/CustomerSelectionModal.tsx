@@ -5,6 +5,7 @@ import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
+import { usePermission } from '../hooks/usePermission';
 
 export interface Customer {
   id: string;
@@ -41,6 +42,7 @@ const CustomerSelectionModal: React.FC<CustomerSelectionModalProps> = ({
   onRegisterNew
 }) => {
   const { user } = useAuth();
+  const { hasPermission } = usePermission();
   const [searchTerm, setSearchTerm] = useState('');
   
   // Settings state loaded on mount
@@ -92,7 +94,7 @@ const CustomerSelectionModal: React.FC<CustomerSelectionModalProps> = ({
 
   // Check role-based permission
   const isPharmacist = Array.isArray(user?.roles) && user.roles.includes('PHARMACIST');
-  const canRegister = !isPharmacist || allowPharmacistRegister;
+  const canRegister = (!isPharmacist || allowPharmacistRegister) && hasPermission('CUSTOMERS.CREATE');
 
   // Compute stats helper
   const getCustomerStats = (customer: Customer) => {

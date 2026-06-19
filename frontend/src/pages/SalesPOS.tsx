@@ -19,6 +19,7 @@ import DraftRestorationModal from '../components/DraftRestorationModal';
 import SaleSuccessScreen from '../components/POS/SaleSuccessScreen';
 import toast from 'react-hot-toast';
 import alerts from '../utils/alerts';
+import { usePermission } from '../hooks/usePermission';
 
 const SalesPOS = () => {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
@@ -32,6 +33,7 @@ const SalesPOS = () => {
   const [completedSaleData, setCompletedSaleData] = useState<any>(null);
 
   const { user } = useAuth();
+  const { hasPermission } = usePermission();
   const isPharmacist = Array.isArray(user?.roles) && (user.roles.includes('PHARMACIST') || user.roles.includes('BUSINESS_ADMIN'));
   const queryClient = useQueryClient();
 
@@ -196,8 +198,12 @@ const SalesPOS = () => {
         onClose={() => setShowSelectionModal(false)}
         onSelect={(selectedCustomer) => setCustomer(selectedCustomer)}
         onRegisterNew={() => {
-          setShowSelectionModal(false);
-          setShowRegisterModal(true);
+          if (hasPermission('CUSTOMERS.CREATE')) {
+            setShowSelectionModal(false);
+            setShowRegisterModal(true);
+          } else {
+            alerts.friendlyError('Permission denied');
+          }
         }}
       />
 

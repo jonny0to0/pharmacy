@@ -11,6 +11,8 @@ interface JwtPayload {
   userId: string;
   roles: string[];
   tenantId: string | null;
+  roleId?: string | null;
+  permissionVersion?: number;
   isImpersonating?: boolean;
   originalAdminId?: string;
   scope?: 'FULL' | 'LIMITED';
@@ -49,6 +51,35 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
 
     const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
     if (!user) return res.status(401).json({ error: "User not found" });
+
+    // 1. Verify User Status
+    if (!user.isActive || user.isDeleted || user.status === 'DISABLED') {
+      return res.status(401).json({ error: "User is disabled or deleted", code: "USER_DISABLED" });
+    }
+
+    // 2. Verify Tenant Status
+    if (user.tenantId) {
+      const tenant = await prisma.tenant.findUnique({ where: { id: user.tenantId } });
+      if (!tenant) {
+        return res.status(401).json({ error: "Business account not found", code: "TENANT_INVALID" });
+      }
+    }
+
+    // 3. Verify Role Exists
+    const userroleCount = await prisma.userrole.count({ where: { userId: user.id } });
+    if (userroleCount === 0 && !decoded.roles.includes('SUPER_ADMIN')) {
+      return res.status(403).json({ error: "User has no role assigned", code: "ROLE_INVALID" });
+    }
+
+    // 4. Check Permission Version (Mismatch detection)
+    if (decoded.permissionVersion !== undefined && user.permissionVersion !== undefined) {
+      if (decoded.permissionVersion < user.permissionVersion) {
+        return res.status(401).json({
+          error: "Security configuration updated. Revalidating session...",
+          code: "TOKEN_EXPIRED"
+        });
+      }
+    }
 
     // --- 1. TRUSTED DEVICE CHECK ---
     const deviceToken = req.cookies?.[TRUSTED_DEVICE_CONFIG.COOKIE_NAME];
@@ -112,6 +143,8 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
       userId: decoded.userId,
       roles: decoded.roles,
       tenantId: decoded.tenantId,
+      roleId: decoded.roleId || null,
+      permissionVersion: decoded.permissionVersion || 1,
       isImpersonating: decoded.isImpersonating,
       originalAdminId: decoded.originalAdminId,
       scope: decoded.scope || 'FULL',
@@ -130,7 +163,11 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
 export const authorizeRoles = (...allowedRoles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user || !req.user.roles.some(role => allowedRoles.includes(role))) {
-      return res.status(403).json({ success: false, error: "Access denied. Insufficient permissions." });
+      return res.status(403).json({
+        success: false,
+        message: "Access Restricted",
+        code: "PERMISSION_DENIED"
+      });
     }
     next();
   };
@@ -200,11 +237,19 @@ export const authorizePermission = (permission: string, requiredScope: 'FULL' | 
     }
 
     if (!hasPerm) {
-      return res.status(403).json({ success: false, error: `Permission denied: ${permission} required.` });
+      return res.status(403).json({
+        success: false,
+        message: "Access Restricted",
+        code: "PERMISSION_DENIED"
+      });
     }
 
     if (requiredScope === 'FULL' && effectiveScope !== 'FULL') {
-      return res.status(403).json({ success: false, error: `Insufficient scope: FULL access required for ${permission}.` });
+      return res.status(403).json({
+        success: false,
+        message: "Access Restricted",
+        code: "PERMISSION_DENIED"
+      });
     }
 
     next();

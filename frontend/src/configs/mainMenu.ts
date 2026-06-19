@@ -2,6 +2,7 @@ import {
   BarChart3, 
   ShoppingCart, 
   Package, 
+  Archive,
   Users, 
   Truck, 
   CreditCard, 
@@ -72,14 +73,26 @@ export const mainMenu: MenuItem[] = [
   },
   { 
     title: {
+      PHARMACY: 'Medicine Catalog',
+      HOSPITAL: 'Item Catalog',
+      WHOLESALER: 'Product Catalog',
+      DEFAULT: 'Products'
+    },
+    path: '/products', 
+    icon: Package, 
+    module: 'PRODUCTS',
+    businessTypes: ['PHARMACY', 'RETAILER', 'HOSPITAL', 'WHOLESALER', 'DISTRIBUTOR', 'MEDICAL_STORE']
+  },
+  { 
+    title: {
       PHARMACY: 'Medicine Inventory',
       HOSPITAL: 'Supplied Goods',
       WHOLESALER: 'Warehouse Stock',
       DEFAULT: 'Inventory'
     },
-    path: '/products', 
-    icon: Package, 
-    module: 'PRODUCTS',
+    path: '/inventory', 
+    icon: Archive, 
+    module: 'INVENTORY',
     businessTypes: ['PHARMACY', 'RETAILER', 'HOSPITAL', 'WHOLESALER', 'DISTRIBUTOR', 'MEDICAL_STORE']
   },
   { 

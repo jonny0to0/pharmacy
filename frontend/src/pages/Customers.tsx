@@ -8,6 +8,7 @@ import Button from '../components/ui/Button';
 import { Card, CardContent } from '../components/ui/Card';
 import { useAuth } from '../context/AuthContext';
 import alerts from '../utils/alerts';
+import { usePermission } from '../hooks/usePermission';
 
 export interface Customer {
   id: string;
@@ -25,6 +26,7 @@ export interface Customer {
 
 const Customers = () => {
   const { user } = useAuth();
+  const { hasPermission, checkPermissionAndRun } = usePermission();
   const businessType = user?.businessType || 'PHARMACY';
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -71,32 +73,37 @@ const Customers = () => {
   const handleSave = async (customer: CustomerInput) => {
     await saveMutation.mutateAsync(customer);
   };
-
-  const handleDelete = async (id: string) => {
-    const result = await alerts.confirm('Delete Customer', 'Executing hard-delete: This will permanently remove the customer profile. Continue?', 'Delete');
-    if (result.isConfirmed) {
-      await deleteMutation.mutateAsync(id);
-    }
-  };
-
   const openAddModal = () => {
-    setEditingCustomer(null);
-    setIsModalOpen(true);
+    checkPermissionAndRun('CUSTOMERS.CREATE', () => {
+      setEditingCustomer(null);
+      setIsModalOpen(true);
+    });
   };
 
   const openEditModal = (customer: Customer) => {
-    setEditingCustomer({
-      id: customer.id,
-      name: customer.name,
-      phone: customer.phone,
-      email: customer.email || '',
-      gst_number: customer.gst_number || '',
-      address: customer.address || '',
-      state: customer.state || '',
-      customerType: customer.customerType,
-      creditLimit: customer.creditLimit,
+    checkPermissionAndRun('CUSTOMERS.UPDATE', () => {
+      setEditingCustomer({
+        id: customer.id,
+        name: customer.name,
+        phone: customer.phone,
+        email: customer.email || '',
+        gst_number: customer.gst_number || '',
+        address: customer.address || '',
+        state: customer.state || '',
+        customerType: customer.customerType,
+        creditLimit: customer.creditLimit,
+      });
+      setIsModalOpen(true);
     });
-    setIsModalOpen(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    checkPermissionAndRun('CUSTOMERS.DELETE', async () => {
+      const result = await alerts.confirm('Delete Customer', 'Executing hard-delete: This will permanently remove the customer profile. Continue?', 'Delete');
+      if (result.isConfirmed) {
+        await deleteMutation.mutateAsync(id);
+      }
+    });
   };
 
   const filteredCustomers = customers.filter(c => 
@@ -120,6 +127,7 @@ const Customers = () => {
         <Button
           onClick={openAddModal}
           leftIcon={<Plus size={18} />}
+          disabled={!hasPermission('CUSTOMERS.CREATE')}
         >
           {registerLabel}
         </Button>
@@ -278,6 +286,7 @@ const Customers = () => {
                             size="icon"
                             onClick={() => openEditModal(customer)}
                             title="Edit Customer"
+                            disabled={!hasPermission('CUSTOMERS.UPDATE')}
                          >
                            <Edit3 size={16} />
                          </Button>
@@ -295,6 +304,7 @@ const Customers = () => {
                            size="icon"
                            onClick={() => handleDelete(customer.id)}
                            title="Delete Profile"
+                           disabled={!hasPermission('CUSTOMERS.DELETE')}
                         >
                           <Trash2 size={16} />
                         </Button>

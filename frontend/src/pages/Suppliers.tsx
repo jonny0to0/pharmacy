@@ -20,6 +20,7 @@ import FormField from '../components/ui/FormField';
 import { useFormDraft } from '../hooks/useFormDraft';
 import DraftRestorationModal from '../components/DraftRestorationModal';
 import toast from 'react-hot-toast';
+import { usePermission } from '../hooks/usePermission';
 
 interface Supplier {
   id: string;
@@ -74,6 +75,7 @@ const INDIAN_STATES = [
 
 const Suppliers = () => {
   const qc = useQueryClient();
+  const { hasPermission, checkPermissionAndRun } = usePermission();
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
@@ -163,26 +165,38 @@ const Suppliers = () => {
   };
 
   const handeEdit = (s: Supplier) => {
-    setIsEditing(true);
-    setEditId(s.id);
-    setForm({
-      name: s.name,
-      type: s.type,
-      mobile: s.mobile || '',
-      email: s.email || '',
-      gstin: s.gstin || '',
-      drugLicenseNo: s.drugLicenseNo || '',
-      dlExpiry: s.dlExpiry ? s.dlExpiry.slice(0, 10) : '',
-      pan: s.pan || '',
-      address: s.address || '',
-      state: s.state || ''
+    checkPermissionAndRun('SUPPLIERS.UPDATE', () => {
+      setIsEditing(true);
+      setEditId(s.id);
+      setForm({
+        name: s.name,
+        type: s.type,
+        mobile: s.mobile || '',
+        email: s.email || '',
+        gstin: s.gstin || '',
+        drugLicenseNo: s.drugLicenseNo || '',
+        dlExpiry: s.dlExpiry ? s.dlExpiry.slice(0, 10) : '',
+        pan: s.pan || '',
+        address: s.address || '',
+        state: s.state || ''
+      });
+      setShowModal(true);
     });
-    setShowModal(true);
   };
 
   const handleOpenDetails = (s: Supplier) => {
-    setSelectedSupplier(s);
-    setIsDrawerOpen(true);
+    checkPermissionAndRun('SUPPLIERS.READ', () => {
+      setSelectedSupplier(s);
+      setIsDrawerOpen(true);
+    });
+  };
+
+  const openAddModal = () => {
+    checkPermissionAndRun('SUPPLIERS.CREATE', () => {
+      setIsEditing(false); 
+      setForm(INITIAL_FORM); 
+      setShowModal(true); 
+    });
   };
 
   const filtered = suppliers.filter(s =>
@@ -210,12 +224,9 @@ const Suppliers = () => {
           <p className="text-sm font-medium text-slate-500 mt-1">Manage vendor relations and infrastructure compliance.</p>
         </div>
         <Button
-          onClick={() => { 
-              setIsEditing(false); 
-              setForm(INITIAL_FORM); 
-              setShowModal(true); 
-          }}
+          onClick={openAddModal}
           leftIcon={<Plus size={18} />}
+          disabled={!hasPermission('SUPPLIERS.CREATE')}
         >
           Add New Supplier
         </Button>
@@ -350,6 +361,7 @@ const Suppliers = () => {
                            size="icon"
                            onClick={() => handeEdit(s)}
                            title="Edit Vendor"
+                           disabled={!hasPermission('SUPPLIERS.UPDATE')}
                         >
                           <Edit3 size={16} />
                         </Button>
@@ -359,6 +371,7 @@ const Suppliers = () => {
                            className="bg-slate-900 hover:bg-slate-800 border-transparent shadow-md"
                            onClick={() => handleOpenDetails(s)}
                            title="View Details"
+                           disabled={!hasPermission('SUPPLIERS.READ')}
                         >
                           <ArrowUpRight size={16} />
                         </Button>
@@ -366,12 +379,15 @@ const Suppliers = () => {
                            variant="danger"
                            size="icon"
                            onClick={async () => {
-                             const result = await alerts.confirm('Delete Vendor', 'Are you sure you want to delete this vendor? This action cannot be undone.', 'Delete');
-                             if(result.isConfirmed) {
-                               deleteMutation.mutate(s.id);
-                             }
+                             checkPermissionAndRun('SUPPLIERS.DELETE', async () => {
+                               const result = await alerts.confirm('Delete Vendor', 'Are you sure you want to delete this vendor? This action cannot be undone.', 'Delete');
+                               if(result.isConfirmed) {
+                                 deleteMutation.mutate(s.id);
+                               }
+                             });
                            }}
                            title="Delete Vendor"
+                           disabled={!hasPermission('SUPPLIERS.DELETE')}
                         >
                           <Trash2 size={16} />
                         </Button>

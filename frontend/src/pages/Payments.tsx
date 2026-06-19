@@ -8,6 +8,7 @@ import {
 import Modal from '../components/Modal';
 import FormField from '../components/ui/FormField';
 import Input from '../components/ui/Input';
+import { usePermission } from '../hooks/usePermission';
 
 interface Customer { id: string; name: string; outstandingBalance: number; }
 interface Supplier { id: string; name: string; outstandingBalance: number; }
@@ -24,12 +25,14 @@ const modeIcons: Record<string, React.ReactNode> = {
 
 const Payments = () => {
   const qc = useQueryClient();
+  const { hasPermission, checkPermissionAndRun } = usePermission();
   const [activeTab, setActiveTab] = useState<'RECEIPT' | 'PAYMENT'>('RECEIPT');
   const [showModal, setShowModal] = useState(false);
   const [formType, setFormType] = useState<'RECEIPT' | 'PAYMENT'>('RECEIPT');
   const [successMsg, setSuccessMsg] = useState('');
   const [formError, setFormError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [isPending, setIsPending] = useState(false);
 
   // Form state
   const [selectedPartyId, setSelectedPartyId] = useState('');
@@ -71,18 +74,32 @@ const Payments = () => {
     setShowModal(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
     if (!selectedPartyId) { setFormError('Please select a party.'); return; }
     if (!amount || Number(amount) <= 0) { setFormError('Enter a valid amount.'); return; }
 
-    setSuccessMsg(`${formType === 'RECEIPT' ? 'Payment received' : 'Payment made'} of ₹${parseFloat(amount).toLocaleString()} recorded!`);
-    qc.invalidateQueries({ queryKey: ['customers'] });
-    qc.invalidateQueries({ queryKey: ['suppliers'] });
-    setShowModal(false);
-    resetForm();
-    setTimeout(() => setSuccessMsg(''), 4000);
+    setIsPending(true);
+    try {
+      const endpoint = formType === 'RECEIPT' ? '/payments/receive' : '/payments/pay';
+      const payload = formType === 'RECEIPT'
+        ? { customerId: selectedPartyId, amount: Number(amount), mode, referenceNo: reference || null }
+        : { supplierId: selectedPartyId, amount: Number(amount), mode, referenceNo: reference || null };
+
+      await api.post(endpoint, payload);
+
+      setSuccessMsg(`${formType === 'RECEIPT' ? 'Payment received' : 'Payment made'} of ₹${parseFloat(amount).toLocaleString()} recorded!`);
+      qc.invalidateQueries({ queryKey: ['customers'] });
+      qc.invalidateQueries({ queryKey: ['suppliers'] });
+      setShowModal(false);
+      resetForm();
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } catch (err: any) {
+      setFormError(err.response?.data?.error || err.response?.data?.message || 'Failed to record payment. Please try again.');
+    } finally {
+      setIsPending(false);
+    }
   };
 
   return (
@@ -95,16 +112,22 @@ const Payments = () => {
         <div className="flex gap-4">
           <button 
             id="receive-payment-btn" 
-            onClick={() => openModal('RECEIPT')}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl flex items-center gap-2 text-sm font-semibold transition-all shadow-md hover:shadow-lg active:scale-95 shadow-emerald-100"
+            disabled={!hasPermission('PAYMENTS.CREATE')}
+            onClick={() => {
+              checkPermissionAndRun('PAYMENTS.CREATE', () => openModal('RECEIPT'));
+            }}
+            className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-emerald-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 text-sm font-semibold transition-all shadow-md hover:shadow-lg active:scale-95 shadow-emerald-100"
           >
             <ArrowDownLeft size={18} />
             Receive Funds
           </button>
           <button 
             id="make-payment-btn" 
-            onClick={() => openModal('PAYMENT')}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl flex items-center gap-2 text-sm font-semibold transition-all shadow-md hover:shadow-lg active:scale-95 shadow-indigo-100"
+            disabled={!hasPermission('PAYMENTS.CREATE')}
+            onClick={() => {
+              checkPermissionAndRun('PAYMENTS.CREATE', () => openModal('PAYMENT'));
+            }}
+            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-indigo-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 text-sm font-semibold transition-all shadow-md hover:shadow-lg active:scale-95 shadow-indigo-100"
           >
             <ArrowUpRight size={18} />
             Make Payment
@@ -208,8 +231,11 @@ const Payments = () => {
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">unsettled</p>
                 </div>
                 <button 
-                  onClick={() => openModal(party.type as 'RECEIPT' | 'PAYMENT', party.id)}
-                  className={`px-6 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all cursor-pointer shadow-sm active:scale-95 text-white ${party.type === 'RECEIPT' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-50' : 'bg-rose-600 hover:bg-rose-700 shadow-rose-50'}`}
+                  disabled={!hasPermission('PAYMENTS.CREATE')}
+                  onClick={() => {
+                    checkPermissionAndRun('PAYMENTS.CREATE', () => openModal(party.type as 'RECEIPT' | 'PAYMENT', party.id));
+                  }}
+                  className={`px-6 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all cursor-pointer shadow-sm active:scale-95 text-white disabled:opacity-50 disabled:cursor-not-allowed ${party.type === 'RECEIPT' ? 'bg-emerald-600 hover:bg-emerald-700 disabled:hover:bg-emerald-600 shadow-emerald-50' : 'bg-rose-600 hover:bg-rose-700 disabled:hover:bg-rose-600 shadow-rose-50'}`}
                 >
                   {party.type === 'RECEIPT' ? 'Realize' : 'Settle'}
                 </button>
@@ -249,9 +275,14 @@ const Payments = () => {
             <button 
               type="submit" 
               form="paymentForm"
-              className={`flex-1 py-3 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 cursor-pointer shadow-md hover:shadow-lg active:scale-95 transition-all ${formType === 'RECEIPT' ? 'bg-emerald-600 shadow-emerald-50' : 'bg-indigo-600 shadow-indigo-50'}`}
+              disabled={isPending}
+              className={`flex-1 py-3 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 cursor-pointer shadow-md hover:shadow-lg active:scale-95 transition-all disabled:opacity-70 disabled:cursor-not-allowed ${formType === 'RECEIPT' ? 'bg-emerald-600 shadow-emerald-50' : 'bg-indigo-600 shadow-indigo-50'}`}
             >
-              {formType === 'RECEIPT' ? 'Confirm Receipt' : 'Confirm Disbursement'}
+              {isPending ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Recording...</>
+              ) : (
+                formType === 'RECEIPT' ? 'Confirm Receipt' : 'Confirm Disbursement'
+              )}
             </button>
           </div>
         }

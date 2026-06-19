@@ -245,6 +245,7 @@ router.put("/staff/:id", authenticateToken, requirePermission("STAFF.UPDATE"), a
           roleId: roleToAssignId
         }
       };
+      updateData.permissionVersion = { increment: 1 };
     }
 
     const updated = await prisma.user.update({
@@ -430,6 +431,22 @@ router.put("/staff/:id/permissions", authenticateToken, requirePermission("ROLES
     });
     if (!user) return res.status(404).json({ error: "Staff member not found" });
 
+    // Get old direct permissions
+    const oldDirectPermissions = await prisma.userpermission.findMany({
+      where: { userId: id },
+      include: { permission: true }
+    });
+    const oldPermissionNames = oldDirectPermissions.map(dp => dp.permission.name);
+
+    // Get new permissions
+    const newPermissions = await prisma.permission.findMany({
+      where: { id: { in: permissionIds } }
+    });
+    const newPermissionNames = newPermissions.map(p => p.name);
+
+    const added = newPermissionNames.filter(name => !oldPermissionNames.includes(name));
+    const removed = oldPermissionNames.filter(name => !newPermissionNames.includes(name));
+
     await prisma.$transaction([
       prisma.userpermission.deleteMany({ where: { userId: id } }),
       prisma.userpermission.createMany({
@@ -438,6 +455,10 @@ router.put("/staff/:id/permissions", authenticateToken, requirePermission("ROLES
           userId: id,
           permissionId: pId
         }))
+      }),
+      prisma.user.update({
+        where: { id },
+        data: { permissionVersion: { increment: 1 } }
       })
     ]);
 
@@ -447,7 +468,10 @@ router.put("/staff/:id/permissions", authenticateToken, requirePermission("ROLES
     // Audit Log
     await createAuditLog(req.user!.userId, "STAFF", "UPDATE_PERMISSIONS", id, {
       staffName: user.name,
-      permissionIds
+      addedPermissions: added,
+      removedPermissions: removed,
+      oldValue: oldPermissionNames.join(", "),
+      newValue: newPermissionNames.join(", ")
     });
 
     res.json({ message: "Direct permissions updated successfully" });

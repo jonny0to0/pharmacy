@@ -37,33 +37,43 @@ const SidebarContent: React.FC = () => {
     }
   }, [mode, displayMode]);
 
-  const filteredMainMenu = mainMenu.filter(item => {
+  const behavior = user?.restrictedMenuBehavior || 'HIDE';
+
+  const processedMainMenu = mainMenu.map(item => {
     // 1. Strict Role-Based Isolation
+    let isRoleMatch = true;
     if (isSuperAdmin) {
-      // Super Admin ONLY sees items where businessTypes includes 'SUPER_ADMIN'
-      if (!item.businessTypes?.includes('SUPER_ADMIN')) return false;
+      if (!item.businessTypes?.includes('SUPER_ADMIN')) isRoleMatch = false;
     } else {
-      // Store Admins NEVER see items where businessTypes is ONLY ['SUPER_ADMIN']
-      if (item.businessTypes?.includes('SUPER_ADMIN') && item.businessTypes?.length === 1) return false;
-      
-      // Check business type match for store items
-      if (item.businessTypes && !item.businessTypes.includes(businessType)) return false;
+      if (item.businessTypes?.includes('SUPER_ADMIN') && item.businessTypes?.length === 1) isRoleMatch = false;
+      if (item.businessTypes && !item.businessTypes.includes(businessType)) isRoleMatch = false;
     }
 
-    // 2. Permission & Module Gates
-    if (item.permission && !hasPermission(item.permission)) return false;
-    if (item.module && !hasModuleAccess(item.module)) return false;
-    
-    return true;
-  });
+    if (!isRoleMatch) return null;
 
-  const filteredSettingsMenu = settingsMenu.map(section => ({
-    ...section,
-    items: section.items.filter(item => {
-      if (item.permission && !hasPermission(item.permission)) return false;
-      return true;
-    })
-  })).filter(section => section.items.length > 0);
+    // 2. Permission & Module Gates
+    const isAuthorized = 
+      (!item.permission || hasPermission(item.permission)) && 
+      (!item.module || hasModuleAccess(item.module));
+
+    if (!isAuthorized) {
+      return null;
+    }
+
+    return { ...item, disabled: false };
+  }).filter((item): item is typeof mainMenu[number] & { disabled: boolean } => item !== null);
+
+  const processedSettingsMenu = settingsMenu.map(section => {
+    const items = section.items.map(item => {
+      const isAuthorized = !item.permission || hasPermission(item.permission);
+      if (!isAuthorized) {
+        return null;
+      }
+      return { ...item, disabled: false };
+    }).filter((item): item is typeof section.items[number] & { disabled: boolean } => item !== null);
+
+    return { ...section, items };
+  }).filter(section => section.items.length > 0);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -105,17 +115,18 @@ const SidebarContent: React.FC = () => {
         }`}
       >
         {displayMode === 'MAIN' ? (
-          filteredMainMenu.map((item) => (
+          processedMainMenu.map((item) => (
             <SidebarItem
               key={resolveItemTitle(item.title)}
               to={item.path}
               icon={item.icon}
               title={resolveItemTitle(item.title)}
+              disabled={item.disabled}
             />
           ))
         ) : (
           <div className="space-y-6">
-            {filteredSettingsMenu.map((section) => (
+            {processedSettingsMenu.map((section) => (
               <div key={section.id} className="mb-6 last:mb-2 text-slate-200">
                 {!isCollapsed && (
                   <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] px-4 mb-3">
@@ -129,6 +140,7 @@ const SidebarContent: React.FC = () => {
                       to={item.path}
                       icon={item.icon}
                       title={item.label}
+                      disabled={item.disabled}
                     />
                   ))}
                 </div>

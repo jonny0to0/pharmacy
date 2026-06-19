@@ -10,6 +10,7 @@ const MODULES = [
   "ROLES",
   "TENANTS",
   "PRODUCTS",
+  "INVENTORY",
   "CUSTOMERS",
   "SUPPLIERS",
   "SALES",
@@ -143,6 +144,7 @@ async function main() {
       p.name.includes("READ") || 
       p.name.includes("SALES.CREATE") || 
       p.name.includes("PRODUCTS") ||
+      p.name.includes("INVENTORY") ||
       p.name.includes("CUSTOMERS") ||
       p.name.includes("SUPPLIERS") ||
       p.name.includes("EXPENSES") ||
@@ -180,6 +182,8 @@ async function main() {
     const pharmacistPerms = allPermissions.filter((p) =>
       p.name === "DASHBOARD.READ" || 
       (p.name.startsWith("PRODUCTS") && !p.name.includes("CREATE")) || 
+      p.name === "INVENTORY.READ" ||
+      p.name === "INVENTORY.CREATE" ||
       p.name.startsWith("SALES") || 
       p.name.startsWith("CUSTOMERS")
     );

@@ -10,6 +10,7 @@ import Modal from '../components/Modal';
 import FormField from '../components/ui/FormField';
 import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
+import { usePermission } from '../hooks/usePermission';
 
 interface Expense {
   id: string;
@@ -32,6 +33,7 @@ const CATEGORIES = [
 
 const Expenses = () => {
   const qc = useQueryClient();
+  const { hasPermission, checkPermissionAndRun } = usePermission();
   const [showModal, setShowModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [formError, setFormError] = useState('');
@@ -100,8 +102,14 @@ const Expenses = () => {
         </div>
         <button 
           id="new-expense-btn" 
-          onClick={() => { setShowModal(true); resetForm(); }}
-          className="bg-rose-600 hover:bg-rose-700 text-white px-6 py-3 rounded-xl flex items-center gap-2 text-sm font-semibold transition-all shadow-md hover:shadow-lg active:scale-95"
+          disabled={!hasPermission('EXPENSES.CREATE')}
+          onClick={() => {
+            checkPermissionAndRun('EXPENSES.CREATE', () => {
+              setShowModal(true);
+              resetForm();
+            });
+          }}
+          className="bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-rose-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 text-sm font-semibold transition-all shadow-md hover:shadow-lg active:scale-95"
         >
           <Plus size={18} />
           Record Voucher

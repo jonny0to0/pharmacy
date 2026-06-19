@@ -105,6 +105,10 @@ api.interceptors.response.use(
             localStorage.setItem('accessToken', accessToken);
             localStorage.setItem('user', JSON.stringify(user));
             
+            window.dispatchEvent(new CustomEvent('auth-token-refreshed', { 
+              detail: { accessToken, user } 
+            }));
+            
             // Update default headers for subsequent requests
             api.defaults.headers.common['Authorization'] = 'Bearer ' + accessToken;
             originalRequest.headers['Authorization'] = 'Bearer ' + accessToken;
@@ -163,6 +167,7 @@ api.interceptors.response.use(
     
     if (status === 403) {
       alerts.friendlyError('Permission denied');
+      window.location.href = '/unauthorized';
     } else if (status >= 500) {
       alerts.friendlyError('Internal server error - ' + message);
     } else if (!status) {

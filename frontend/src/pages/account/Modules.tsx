@@ -2,13 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { LayoutGrid, Activity, Save, Loader2, AlertCircle } from 'lucide-react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import { usePermission } from '../../hooks/usePermission';
 
 const Modules = () => {
+  const { hasPermission, checkPermissionAndRun } = usePermission();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [enableMedicalInfo, setEnableMedicalInfo] = useState(false);
   const [walkInBehavior, setWalkInBehavior] = useState('OPTION_A');
   const [allowPharmacistRegister, setAllowPharmacistRegister] = useState(false);
+  const [restrictedMenuBehavior, setRestrictedMenuBehavior] = useState('HIDE');
 
   useEffect(() => {
     fetchModuleSettings();
@@ -21,6 +24,7 @@ const Modules = () => {
         setEnableMedicalInfo(!!res.data.settings.enableMedicalInfo);
         setWalkInBehavior(res.data.settings.walkInCustomerBehavior || 'OPTION_A');
         setAllowPharmacistRegister(!!res.data.settings.allowPharmacistCustomerCreation);
+        setRestrictedMenuBehavior(res.data.settings.restrictedMenuBehavior || 'HIDE');
       }
     } catch (err) {
       toast.error('Failed to load module settings');
@@ -30,19 +34,22 @@ const Modules = () => {
   };
 
   const handleSave = async () => {
-    setSaving(true);
-    try {
-      await api.post('/settings/modules', {
-        enableMedicalInfo,
-        walkInCustomerBehavior: walkInBehavior,
-        allowPharmacistCustomerCreation: allowPharmacistRegister
-      });
-      toast.success('Module settings updated successfully');
-    } catch (err) {
-      toast.error('Failed to update module settings');
-    } finally {
-      setSaving(false);
-    }
+    checkPermissionAndRun('SETTINGS_BUSINESS.UPDATE', async () => {
+      setSaving(true);
+      try {
+        await api.post('/settings/modules', {
+          enableMedicalInfo,
+          walkInCustomerBehavior: walkInBehavior,
+          allowPharmacistCustomerCreation: allowPharmacistRegister,
+          restrictedMenuBehavior
+        });
+        toast.success('Module settings updated successfully');
+      } catch (err) {
+        toast.error('Failed to update module settings');
+      } finally {
+        setSaving(false);
+      }
+    });
   };
 
   if (loading) {
@@ -71,7 +78,7 @@ const Modules = () => {
         
         <button
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || !hasPermission('SETTINGS_BUSINESS.UPDATE')}
           className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white text-sm font-bold rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all disabled:opacity-70"
         >
           {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
@@ -155,24 +162,22 @@ const Modules = () => {
           
           <div className="flex-1 space-y-2 relative">
             <div className="flex items-center gap-3">
-              <h3 className="text-lg font-extrabold text-slate-900">Pharmacist Customer Registration</h3>
-              {allowPharmacistRegister && (
-                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[9px] font-black uppercase tracking-widest rounded-full">Active</span>
-              )}
+              <h3 className="text-lg font-extrabold text-slate-900">Restricted Sidebar Menus</h3>
             </div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Role-based Registration Rules</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">UI/UX Accessibility Control</p>
             <p className="text-sm font-medium text-slate-500 max-w-2xl leading-relaxed">
-              When disabled, users with the Pharmacist role are restricted from registering new customer entries on the fly.
+              Configure visibility of pages/menus the user does not have permission to access. Choose whether to hide them completely from the sidebar or keep them visible but grayed out and disabled.
             </p>
           </div>
 
-          <button 
-            type="button" 
-            onClick={() => setAllowPharmacistRegister(!allowPharmacistRegister)}
-            className={`relative w-16 h-8 rounded-full transition-all duration-500 cursor-pointer shadow-inner ${allowPharmacistRegister ? 'bg-indigo-500 ring-4 ring-indigo-500/10' : 'bg-slate-200'}`}
+          <select 
+            value={restrictedMenuBehavior} 
+            onChange={e => setRestrictedMenuBehavior(e.target.value)}
+            className="w-full sm:w-64 px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-600 text-sm font-semibold outline-none transition-all cursor-pointer"
           >
-            <div className={`absolute top-1.5 w-5 h-5 rounded-full bg-white shadow-lg transform transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${allowPharmacistRegister ? 'translate-x-9' : 'translate-x-1.5'}`} />
-          </button>
+            <option value="HIDE">Option A: Hide completely</option>
+            <option value="DISABLE">Option B: Show as disabled</option>
+          </select>
         </div>
       </div>
 

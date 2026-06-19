@@ -7,6 +7,8 @@ import { validate } from "../middleware/validate.js";
 import { registerSchema, loginSchema } from "../validators/schemas.js";
 import { SecurityService } from "../services/SecurityService.js";
 import { SubscriptionService } from "../services/SubscriptionService.js";
+import { cacheService } from "../services/cache.service.js";
+import { authenticateToken } from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -16,7 +18,13 @@ const REFRESH_TOKEN_COOKIE_NAME = "refreshToken";
 
 const generateTokens = (user: any) => {
   const accessToken = jwt.sign(
-    { userId: user.id, roles: user.roles, tenantId: user.tenantId },
+    { 
+      userId: user.id, 
+      roles: user.roles, 
+      tenantId: user.tenantId,
+      roleId: user.roleId,
+      permissionVersion: user.permissionVersion
+    },
     process.env.JWT_SECRET || "default_secret",
     { expiresIn: ACCESS_TOKEN_EXPIRY }
   );
@@ -93,13 +101,21 @@ router.post("/register", validate(registerSchema), async (req: Request, res: Res
         data: { id: randomUUID(), userId: newUser.id, email: true, inApp: true, lowStock: true, newOrder: true }
       });
       
-      return { user: newUser, tenant, roles: [businessAdminRole?.name || 'BUSINESS_ADMIN'] };
+      return { 
+        user: newUser, 
+        tenant, 
+        roles: [businessAdminRole?.name || 'BUSINESS_ADMIN'],
+        roleId: businessAdminRole?.id || null,
+        permissionVersion: newUser.permissionVersion
+      };
     });
 
     const { accessToken, refreshToken } = generateTokens({
       id: result.user.id,
       roles: result.roles,
-      tenantId: result.user.tenantId
+      tenantId: result.user.tenantId,
+      roleId: result.roleId,
+      permissionVersion: result.permissionVersion
     });
 
     // Save/Update Session in DB
@@ -134,7 +150,8 @@ router.post("/register", validate(registerSchema), async (req: Request, res: Res
         permissions: (await basePrisma.role.findFirst({
           where: { name: 'BUSINESS_ADMIN', tenantId: null },
           include: { rolepermission: { include: { permission: true } } }
-        }))?.rolepermission.map(p => p.permission.name) || []
+        }))?.rolepermission.map(p => p.permission.name) || [],
+        restrictedMenuBehavior: 'HIDE'
       }
     });
   } catch (error: any) {
@@ -182,7 +199,11 @@ router.post("/login", validate(loginSchema), async (req: Request, res: Response)
     const user = await basePrisma.user.findFirst({
       where: { OR: [...(email ? [{ email }] : []), ...(mobile ? [{ mobile }] : [])] },
       include: {
-        tenant: true,
+        tenant: {
+          include: {
+            tenantsettings: true
+          }
+        },
         userrole: { include: { role: { include: { rolepermission: { include: { permission: true } } } } } }
       }
     });
@@ -217,10 +238,13 @@ router.post("/login", validate(loginSchema), async (req: Request, res: Response)
        throw new Error("Security data integrity violation: Missing role permissions");
     }
 
+    const roleId = user.userrole[0]?.role.id || null;
     const { accessToken, refreshToken } = generateTokens({
       id: user.id,
       roles,
-      tenantId: user.tenantId
+      tenantId: user.tenantId,
+      roleId,
+      permissionVersion: user.permissionVersion
     });
 
     // Update session in DB (Token Rotation)
@@ -256,7 +280,8 @@ router.post("/login", validate(loginSchema), async (req: Request, res: Response)
         tenantId: user.tenantId,
         isSetupCompleted,
         businessType: user.tenant?.businessType || null,
-        permissions
+        permissions,
+        restrictedMenuBehavior: user.tenant?.tenantsettings?.restrictedMenuBehavior || 'HIDE'
       }
     });
   } catch (error) {
@@ -329,7 +354,11 @@ router.post("/refresh", async (req: Request, res: Response): Promise<any> => {
     const user = await basePrisma.user.findUnique({
       where: { id: decoded.userId },
       include: {
-        tenant: true,
+        tenant: {
+          include: {
+            tenantsettings: true
+          }
+        },
         userrole: { include: { role: { include: { rolepermission: { include: { permission: true } } } } } }
       }
     });
@@ -355,11 +384,14 @@ router.post("/refresh", async (req: Request, res: Response): Promise<any> => {
        throw new Error("Session integrity violated: Permissions missing");
     }
 
+    const roleId = user.userrole[0]?.role.id || null;
     // ROTATION: Generate new tokens
     const { accessToken: newAccessToken, refreshToken: newRefreshToken } = generateTokens({
       id: user.id,
       roles,
-      tenantId: user.tenantId
+      tenantId: user.tenantId,
+      roleId,
+      permissionVersion: user.permissionVersion
     });
 
     // Update DB with NEW refresh token
@@ -387,7 +419,8 @@ router.post("/refresh", async (req: Request, res: Response): Promise<any> => {
         tenantId: user.tenantId,
         isSetupCompleted,
         businessType: user.tenant?.businessType || null,
-        permissions
+        permissions,
+        restrictedMenuBehavior: user.tenant?.tenantsettings?.restrictedMenuBehavior || 'HIDE'
       }
     });
   } catch (err) {
@@ -398,11 +431,87 @@ router.post("/refresh", async (req: Request, res: Response): Promise<any> => {
 
 router.post("/logout", async (req: Request, res: Response) => {
   const refreshToken = req.cookies[REFRESH_TOKEN_COOKIE_NAME];
+  let userId: string | null = null;
+
   if (refreshToken) {
-    await basePrisma.session.deleteMany({ where: { token: refreshToken } });
+    try {
+      const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || "default_refresh_secret") as { userId: string };
+      userId = decoded.userId;
+      await basePrisma.session.deleteMany({ where: { token: refreshToken } });
+    } catch (err) {
+      // Ignore
+    }
   }
+
+  if (!userId) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (token) {
+      try {
+        const decoded = jwt.decode(token) as { userId: string };
+        if (decoded && decoded.userId) {
+          userId = decoded.userId;
+        }
+      } catch (err) {
+        // Ignore
+      }
+    }
+  }
+
+  if (userId) {
+    await cacheService.delete(`user_perms:${userId}`);
+  }
+
   res.clearCookie(REFRESH_TOKEN_COOKIE_NAME);
   res.json({ message: "Logged out successfully" });
+});
+
+router.get("/session", authenticateToken, async (req: Request, res: Response): Promise<any> => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.userId },
+      include: {
+        tenant: {
+          include: {
+            tenantsettings: true
+          }
+        },
+        userrole: { include: { role: { include: { rolepermission: { include: { permission: true } } } } } },
+        userpermission: { include: { permission: true } }
+      }
+    });
+
+    if (!user || !user.isActive || user.isDeleted || user.status === 'DISABLED') {
+      return res.status(401).json({ error: "User is disabled or deleted", code: "USER_DISABLED" });
+    }
+
+    const roles = user.userrole.map(ur => ur.role.name);
+    const permissions = [
+      ...new Set([
+        ...user.userrole.flatMap(ur => ur.role.rolepermission.map(rp => rp.permission.name)),
+        ...user.userpermission.map(up => up.permission.name)
+      ])
+    ];
+
+    res.json({
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        mobile: user.mobile,
+        businessName: user.tenant?.businessName || null,
+        roles,
+        tenantId: user.tenantId,
+        isSetupCompleted: user.tenant?.isSetupCompleted || false,
+        businessType: user.tenant?.businessType || null,
+        permissions,
+        restrictedMenuBehavior: user.tenant?.tenantsettings?.restrictedMenuBehavior || 'HIDE'
+      }
+    });
+  } catch (error) {
+    console.error("[AuthSession] Error fetching session:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 export default router;

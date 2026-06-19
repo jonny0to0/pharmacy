@@ -1,13 +1,14 @@
 import express, { type Request, type Response } from "express";
 import prisma from "../db.js";
 import { authenticateToken } from "../middleware/auth.js";
+import { requirePermission } from "../middleware/permission.middleware.js";
 import { validate } from "../middleware/validate.js";
 import { expenseSchema } from "../validators/schemas.js";
 
 const router = express.Router();
 
 // Get all expenses
-router.get("/", authenticateToken, async (req: Request, res: Response) => {
+router.get("/", authenticateToken, requirePermission("EXPENSES.READ"), async (req: Request, res: Response) => {
   try {
     const expenses = await prisma.expense.findMany({
       where: { tenantId: req.user!.tenantId },
@@ -19,7 +20,7 @@ router.get("/", authenticateToken, async (req: Request, res: Response) => {
   }
 });
 
-router.post("/", authenticateToken, validate(expenseSchema), async (req: Request, res: Response) => {
+router.post("/", authenticateToken, requirePermission("EXPENSES.CREATE"), validate(expenseSchema), async (req: Request, res: Response) => {
   try {
     const { category, amount, date, description, paymentMode } = req.body;
     const newExpense = await prisma.expense.create({

@@ -11,6 +11,7 @@ import FormField from '../components/ui/FormField';
 import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import FormSection from '../components/ui/FormSection';
+import { usePermission } from '../hooks/usePermission';
 
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
@@ -32,6 +33,7 @@ const TABS = [
 ];
 
 const Settings = () => {
+  const { hasPermission, checkPermissionAndRun } = usePermission();
   const [activeTab, setActiveTab] = useState('business');
   const [saving, setSaving] = useState(false);
 
@@ -152,27 +154,29 @@ const Settings = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaving(true);
-    try {
-      await api.post('/settings/profile', {
-        businessName, businessType, gstin, pan, address, state, pinCode: pincode,
-        invoicePrefix, isGstRegistered: !isComposition
-      });
+    checkPermissionAndRun('SETTINGS_BUSINESS.UPDATE', async () => {
+      setSaving(true);
+      try {
+        await api.post('/settings/profile', {
+          businessName, businessType, gstin, pan, address, state, pinCode: pincode,
+          invoicePrefix, isGstRegistered: !isComposition
+        });
 
-      // Save Modules
-      await api.post('/settings/modules', {
-        enableMedicalInfo,
-        walkInCustomerBehavior: walkInBehavior,
-        allowPharmacistCustomerCreation: allowPharmacistRegister
-      });
+        // Save Modules
+        await api.post('/settings/modules', {
+          enableMedicalInfo,
+          walkInCustomerBehavior: walkInBehavior,
+          allowPharmacistCustomerCreation: allowPharmacistRegister
+        });
 
-      toast.success('Settings saved successfully!');
-      clearDraft(); // Clear draft on success
-    } catch (err) {
-      toast.error('Failed to save settings');
-    } finally {
-      setSaving(false);
-    }
+        toast.success('Settings saved successfully!');
+        clearDraft(); // Clear draft on success
+      } catch (err) {
+        toast.error('Failed to save settings');
+      } finally {
+        setSaving(false);
+      }
+    });
   };
 
   const renderBusinessTab = () => (
@@ -494,7 +498,7 @@ const Settings = () => {
             <div className="mt-6 flex justify-end">
               <button 
                 type="submit" 
-                disabled={saving}
+                disabled={saving || !hasPermission('SETTINGS_BUSINESS.UPDATE')}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold text-sm flex items-center gap-2 transition-all shadow-md hover:shadow-lg active:scale-95 disabled:opacity-70 disabled:shadow-none"
               >
                 {saving ? (

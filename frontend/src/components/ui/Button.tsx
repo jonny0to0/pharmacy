@@ -1,5 +1,7 @@
 import React, { forwardRef } from 'react';
 import { Loader2 } from 'lucide-react';
+import { usePermission } from '../../hooks/usePermission';
+import alerts from '../../utils/alerts';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
@@ -9,6 +11,8 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
   iconOnly?: React.ReactNode;
+  permission?: string;
+  module?: string;
 }
 
 const variants = {
@@ -37,8 +41,30 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(({
   iconOnly,
   children,
   disabled,
+  permission,
+  module,
+  onClick,
   ...props
 }, ref) => {
+  const { hasPermission, hasModuleAccess } = usePermission();
+
+  const isAuthorized = 
+    (permission ? hasPermission(permission) : true) &&
+    (module ? hasModuleAccess(module) : true);
+
+  const handleOnClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (!isAuthorized) {
+      e.preventDefault();
+      e.stopPropagation();
+      alerts.friendlyError('Permission denied');
+      return;
+    }
+    if (onClick) {
+      onClick(e);
+    }
+  };
+
+  const isButtonDisabled = disabled || isLoading || !isAuthorized;
   const effectiveSize = size || (iconOnly ? 'icon' : 'md');
   const baseClasses = 'inline-flex items-center justify-center cursor-pointer font-bold rounded-xl transition-all active:scale-[0.98] border focus:outline-none focus:ring-4 focus:ring-indigo-100 gap-2';
   
@@ -47,12 +73,12 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(({
     ${variants[variant]} 
     ${sizes[effectiveSize]} 
     ${fullWidth ? 'w-full' : ''} 
-    ${disabled || isLoading ? 'opacity-60 cursor-not-allowed shadow-none active:scale-100 hover:border-inherit hover:bg-inherit' : ''}
+    ${isButtonDisabled ? 'opacity-60 cursor-not-allowed shadow-none active:scale-100 hover:border-inherit hover:bg-inherit' : ''}
     ${className}
   `.trim();
 
   return (
-    <button ref={ref} className={combinedClasses} disabled={disabled || isLoading} {...props}>
+    <button ref={ref} className={combinedClasses} disabled={isButtonDisabled} onClick={handleOnClick} {...props}>
       {isLoading ? (
         <>
           <Loader2 className="animate-spin w-4 h-4 shrink-0" />

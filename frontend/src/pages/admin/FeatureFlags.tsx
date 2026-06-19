@@ -46,7 +46,7 @@ const AdminFeatureFlags: React.FC = () => {
     const updated = { ...flag, enabled: !flag.enabled };
     const res = await mutate('patch', `/${flag.id}`, { enabled: updated.enabled });
     if (res.success) {
-      setData(prev => prev?.map(f => f.id === flag.id ? updated : f) || null);
+      setData(prev => prev?.map(f => f.id === flag.id ? updated : f) || undefined);
     }
   };
 

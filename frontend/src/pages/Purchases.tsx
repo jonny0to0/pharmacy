@@ -12,6 +12,7 @@ import Select from '../components/ui/Select';
 import { useFormDraft } from '../hooks/useFormDraft';
 import DraftRestorationModal from '../components/DraftRestorationModal';
 import toast from 'react-hot-toast';
+import { usePermission } from '../hooks/usePermission';
 
 interface Product {
   id: string;
@@ -58,6 +59,7 @@ const statusColors: Record<string, string> = {
 
 const Purchases = () => {
   const qc = useQueryClient();
+  const { hasPermission, checkPermissionAndRun } = usePermission();
   const [showModal, setShowModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [formError, setFormError] = useState('');
@@ -216,8 +218,14 @@ const Purchases = () => {
         </div>
         <button 
           id="new-purchase-btn" 
-          onClick={() => { setShowModal(true); resetForm(); }}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl flex items-center gap-2 text-sm font-semibold transition-all shadow-md hover:shadow-lg active:scale-95"
+          disabled={!hasPermission('PURCHASES.CREATE')}
+          onClick={() => {
+            checkPermissionAndRun('PURCHASES.CREATE', () => {
+              setShowModal(true);
+              resetForm();
+            });
+          }}
+          className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-indigo-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 text-sm font-semibold transition-all shadow-md hover:shadow-lg active:scale-95"
         >
           <Plus size={18} />
           New Purchase Entry

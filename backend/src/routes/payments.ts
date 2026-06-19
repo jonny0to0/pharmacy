@@ -1,13 +1,14 @@
 import express, { type Request, type Response } from "express";
 import prisma from "../db.js";
 import { authenticateToken } from "../middleware/auth.js";
+import { requirePermission } from "../middleware/permission.middleware.js";
 import { validate } from "../middleware/validate.js";
 import { paymentSchema } from "../validators/schemas.js";
 
 const router = express.Router();
 
 // Get all payments
-router.get("/", authenticateToken, async (req: Request, res: Response) => {
+router.get("/", authenticateToken, requirePermission("PAYMENTS.READ"), async (req: Request, res: Response) => {
   try {
     const payments = await prisma.payment.findMany({
       where: { tenantId: req.user!.tenantId },
@@ -26,7 +27,7 @@ router.get("/", authenticateToken, async (req: Request, res: Response) => {
 });
 
 // Receive payment from customer
-router.post("/receive", authenticateToken, validate(paymentSchema), async (req: Request, res: Response) => {
+router.post("/receive", authenticateToken, requirePermission("PAYMENTS.CREATE"), validate(paymentSchema), async (req: Request, res: Response) => {
   try {
     const { customerId, amount, mode, referenceNo, saleInvoiceId, date } = req.body;
     const paymentAmount = Number(amount);
@@ -89,7 +90,7 @@ router.post("/receive", authenticateToken, validate(paymentSchema), async (req: 
 });
 
 // Make payment to supplier
-router.post("/pay", authenticateToken, validate(paymentSchema), async (req: Request, res: Response) => {
+router.post("/pay", authenticateToken, requirePermission("PAYMENTS.CREATE"), validate(paymentSchema), async (req: Request, res: Response) => {
   try {
     const { supplierId, amount, mode, referenceNo, purchaseBillId, date } = req.body;
     const paymentAmount = Number(amount);

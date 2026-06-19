@@ -12,7 +12,7 @@ const router = express.Router();
  
 
 // Get all products
-router.get("/", authenticateToken, requirePermission("PRODUCTS.READ"), async (req: Request, res: Response) => {
+router.get("/", authenticateToken, requirePermission(["PRODUCTS.READ", "SALES.READ", "SALES.CREATE"]), async (req: Request, res: Response) => {
   try {
     const { showDeleted, search, categoryId } = req.query;
     const tenantId = req.user!.tenantId;

@@ -14,6 +14,7 @@ interface User {
   isSetupCompleted: boolean;
   businessType: 'PHARMACY' | 'HOSPITAL' | 'WHOLESALER' | 'RETAILER' | 'DISTRIBUTOR' | 'MEDICAL_STORE' | null;
   avatarUrl?: string;
+  restrictedMenuBehavior?: 'HIDE' | 'DISABLE';
 }
 
 interface AuthContextType {
@@ -55,6 +56,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             localStorage.removeItem('user');
           }
           setIsLoading(false);
+
+          // Live revalidation of session in the background on mount
+          api.get('/auth/session')
+            .then(({ data }) => {
+              if (data?.user) {
+                setUser(data.user);
+                localStorage.setItem('user', JSON.stringify(data.user));
+              }
+            })
+            .catch((err) => {
+              console.error("Auth init background check failed:", err);
+              if (err.response?.status === 401 || err.response?.status === 403) {
+                localStorage.removeItem('accessToken');
+                localStorage.removeItem('user');
+                setToken(null);
+                setUser(null);
+              }
+            });
           return;
         }
 
@@ -80,6 +99,44 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     };
     initializeAuth();
+
+    // Tab Focus Event: Re-verify session in the background when the user returns to the tab
+    const handleWindowFocus = () => {
+      const storedToken = localStorage.getItem('accessToken');
+      if (storedToken) {
+        api.get('/auth/session')
+          .then(({ data }) => {
+            if (data?.user) {
+              setUser(data.user);
+              localStorage.setItem('user', JSON.stringify(data.user));
+            }
+          })
+          .catch((err) => {
+            console.error("Focus background check failed:", err);
+            if (err.response?.status === 401 || err.response?.status === 403) {
+              localStorage.removeItem('accessToken');
+              localStorage.removeItem('user');
+              setToken(null);
+              setUser(null);
+              window.location.href = '/login?expired=true';
+            }
+          });
+      }
+    };
+
+    window.addEventListener('focus', handleWindowFocus);
+
+    const handleRefreshed = (e: Event) => {
+      const { accessToken, user } = (e as CustomEvent).detail;
+      setToken(accessToken);
+      setUser(user);
+    };
+
+    window.addEventListener('auth-token-refreshed', handleRefreshed);
+    return () => {
+      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('auth-token-refreshed', handleRefreshed);
+    };
   }, []);
 
   const login = useCallback((newToken: string, newUser: User) => {
@@ -95,9 +152,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } catch (err) {
       console.error("Logout failed", err);
     }
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('user');
-    localStorage.removeItem('originalToken');
+    localStorage.clear();
+    sessionStorage.clear();
     setToken(null);
     setUser(null);
     setIsImpersonating(false);

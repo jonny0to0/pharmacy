@@ -1,13 +1,14 @@
 import express, { type Request, type Response } from "express";
 import prisma from "../db.js";
 import { authenticateToken } from "../middleware/auth.js";
+import { requirePermission } from "../middleware/permission.middleware.js";
 import { randomUUID } from "crypto";
 
 const router = express.Router();
  
 
 // Get all purchase bills
-router.get("/", authenticateToken, async (req: Request, res: Response) => {
+router.get("/", authenticateToken, requirePermission("PURCHASES.READ"), async (req: Request, res: Response) => {
   try {
     const bills = await prisma.purchasebill.findMany({
       where: { tenantId: req.user!.tenantId },
@@ -31,7 +32,7 @@ router.get("/", authenticateToken, async (req: Request, res: Response) => {
 });
 
 // Create purchase bill
-router.post("/", authenticateToken, async (req: Request, res: Response): Promise<any> => {
+router.post("/", authenticateToken, requirePermission("PURCHASES.CREATE"), async (req: Request, res: Response): Promise<any> => {
   const { billNumber, supplierInvoiceNo, supplierId, items, subTotal, totalTax, grandTotal, amountPaid } = req.body;
   const tenantId = req.user!.tenantId;
 
